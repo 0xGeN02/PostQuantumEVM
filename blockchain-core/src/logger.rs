@@ -17,11 +17,9 @@ impl BlockchainLogger {
         let timestamp = Utc::now();
         let session_id = timestamp.format("%Y%m%d_%H%M%S").to_string();
 
-        // Obtener el directorio del ejecutable y navegar a blockchain-core
         let current_exe = std::env::current_exe().unwrap();
         let exe_dir = current_exe.parent().unwrap();
 
-        // Si estamos en target/debug, subimos dos niveles y entramos a blockchain-core
         let blockchain_core_dir = if exe_dir.ends_with("debug") {
             exe_dir
                 .parent()
@@ -30,14 +28,12 @@ impl BlockchainLogger {
                 .unwrap()
                 .join("blockchain-core")
         } else {
-            // Si ejecutamos desde otro lugar, asumimos que estamos en la raíz del proyecto
             std::env::current_dir().unwrap().join("blockchain-core")
         };
 
         let logs_dir = blockchain_core_dir.join("logs").join(&session_id);
         let blocks_dir = logs_dir.join("blocks");
 
-        // Crear el directorio logs/timestamp si no existe
         if !logs_dir.exists() {
             fs::create_dir_all(&logs_dir).expect("Failed to create logs directory");
         }
@@ -72,7 +68,6 @@ impl BlockchainLogger {
 
         self.write_to_file("block_creation.log", &log_entry.to_string());
 
-        // Crear archivo específico para cada bloque en la subcarpeta blocks/
         let block_filename = format!("block_{}.json", block.index);
         self.write_to_subfolder(
             "blocks",

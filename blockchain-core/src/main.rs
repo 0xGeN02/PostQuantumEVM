@@ -25,7 +25,6 @@ fn main() {
         );
     }
 
-    // Log the current blockchain state
     blockchain.log_blockchain_state();
 
     println!("\n=== Validation ===");
@@ -34,7 +33,6 @@ fn main() {
     println!("\n=== Difficulty Statistics ===");
     blockchain.log_difficulty_stats();
 
-    // Create a comprehensive summary report
     blockchain.create_summary_report();
 
     println!("\n✅ All blockchain data has been logged to the session directory");
