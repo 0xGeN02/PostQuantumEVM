@@ -1,5 +1,6 @@
 [workspace]
 members = [
-    "blockchain-core"
+    "blockchain-core",
+    "cli"
 ]
 resolver = "3"
