@@ -1,15 +1,15 @@
 mod block;
 mod blockchain;
-mod pow;
 mod logger;
+mod pow;
 
 use blockchain::Blockchain;
 
 fn main() {
     let mut blockchain = Blockchain::new();
-    
-    println!("=== Blockchain (POW) ===");
-    
+
+    println!("\n=== Blockchain (POW) ===");
+
     blockchain.add_block("Alice pays Bob 10 coins".to_string());
     blockchain.add_block("Bob pays Charlie 5 coins".to_string());
     blockchain.add_block("Charlie pays Dave 3 coins".to_string());
@@ -20,11 +20,8 @@ fn main() {
     println!("\n=== Blockchain State ===");
     for block in &blockchain.blocks {
         println!(
-            "Block {}: Difficulty={}, Hash={}, Nonce={}", 
-            block.index, 
-            block.difficulty,
-            &block.hash,
-            block.nonce
+            "Block {}: Difficulty={}, Hash={}, Nonce={}",
+            block.index, block.difficulty, &block.hash, block.nonce
         );
     }
 
@@ -39,6 +36,6 @@ fn main() {
 
     // Create a comprehensive summary report
     blockchain.create_summary_report();
-    
+
     println!("\n✅ All blockchain data has been logged to the session directory");
 }

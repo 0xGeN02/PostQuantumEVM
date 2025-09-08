@@ -1,0 +1,61 @@
+{
+    // Configuración general de Rust
+    "rust-analyzer.cargo.buildScripts.enable": true,
+    "rust-analyzer.procMacro.enable": true,
+    "rust-analyzer.diagnostics.enable": true,
+    "rust-analyzer.lens.enable": true,
+    "rust-analyzer.hover.actions.enable": true,
+
+    
+    // Configuración de formato
+    "rust-analyzer.rustfmt.overrideCommand": ["rustfmt", "--edition", "2021"],
+    "[rust]": {
+        "editor.defaultFormatter": "rust-lang.rust-analyzer",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "editor.rulers": [100],
+        "editor.wordWrap": "wordWrapColumn",
+        "editor.wordWrapColumn": 100
+    },
+    
+    // Configuración del editor para archivos Rust
+    "editor.semanticHighlighting.enabled": true,
+    "editor.bracketPairColorization.enabled": true,
+    "editor.guides.bracketPairs": true,
+    "editor.suggest.insertMode": "replace",
+    "editor.acceptSuggestionOnCommitCharacter": false,
+    
+    // Configuración de archivos
+    "files.watcherExclude": {
+        "**/target/**": true,
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/node_modules/*/**": true,
+        "**/.hg/store/**": true
+    },
+    "search.exclude": {
+        "**/target": true,
+        "**/Cargo.lock": true
+    },
+    
+    // Terminal integrado
+    "terminal.integrated.env.linux": {
+        "RUST_BACKTRACE": "1"
+    },
+    
+    "debug.allowBreakpointsEverywhere": true,
+    
+    "git.ignoreLimitWarning": true,
+    
+    "rust-analyzer.cargo.target": null,
+    
+    "rust-analyzer.rustc.source": "discover",
+    
+    // Configuración de colores y tema (opcional)
+    "workbench.colorCustomizations": {
+        "rust_analyzer.inlayHints": "#484848",
+        "editorInlayHint.background": "#1e1e1e",
+        "editorInlayHint.foreground": "#888888"
+    }
+}
