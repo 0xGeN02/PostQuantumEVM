@@ -8,7 +8,7 @@
 
     
     // Configuración de formato
-    "rust-analyzer.rustfmt.overrideCommand": ["rustfmt", "--edition", "2021"],
+    "rust-analyzer.rustfmt.overrideCommand": ["rustfmt", "--edition", "2024"],
     "[rust]": {
         "editor.defaultFormatter": "rust-lang.rust-analyzer",
         "editor.formatOnSave": true,
