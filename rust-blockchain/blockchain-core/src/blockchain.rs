@@ -1,20 +1,34 @@
 use crate::block::Block;
 use crate::pow::ProofOfWork;
+use crate::logger::BlockchainLogger;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Blockchain {
     pub blocks: Vec<Block>,
     pub difficulty: usize,
+    #[serde(skip)]
+    pub logger: Option<BlockchainLogger>,
 }
 
 impl Blockchain {
     pub fn new() -> Self {
+        let logger = BlockchainLogger::new();
         let mut genesis_block = Block::new(0, "Genesis Block".to_string(), "0".to_string(), 2);
         genesis_block.mine_block(); 
-        Blockchain {
-            blocks: vec![genesis_block ], 
-            difficulty: 4
+        
+        let blockchain = Blockchain {
+            blocks: vec![genesis_block.clone()], 
+            difficulty: 4,
+            logger: Some(logger),
+        };
+
+        // Log the creation of the genesis block
+        if let Some(ref logger) = blockchain.logger {
+            logger.log_block_creation(&genesis_block);
         }
+
+        blockchain
     }
 
     pub fn add_block(&mut self, data: String) {
@@ -27,13 +41,20 @@ impl Blockchain {
             current_difficulty
         );
         
-        println!("Mining block {}...", new_block.index);
+        // Log mining start
+        if let Some(ref logger) = self.logger {
+            logger.log_mining_start(new_block.index, current_difficulty);
+        }
+        
         let start = std::time::Instant::now();
-
         new_block.mine_block();
-
         let duration = start.elapsed();
-        println!("Block mined: {} in {:?}", new_block.hash, duration);
+
+        // Log mining completion
+        if let Some(ref logger) = self.logger {
+            logger.log_mining_complete(&new_block, duration);
+            logger.log_block_creation(&new_block);
+        }
 
         self.blocks.push(new_block);
     }
@@ -73,5 +94,32 @@ impl Blockchain {
         let max_diff = *difficulties.iter().max().unwrap_or(&0);
         let avg_diff = difficulties.iter().sum::<usize>() as f64 / difficulties.len() as f64;
         (min_diff, max_diff, avg_diff)
+    }
+
+    pub fn log_blockchain_state(&self) {
+        if let Some(ref logger) = self.logger {
+            logger.log_blockchain_state(self);
+        }
+    }
+
+    pub fn log_validation_result(&self) -> bool {
+        let is_valid = self.is_valid();
+        if let Some(ref logger) = self.logger {
+            logger.log_validation_result(is_valid);
+        }
+        is_valid
+    }
+
+    pub fn log_difficulty_stats(&self) {
+        let (min_diff, max_diff, avg_diff) = self.get_difficulty_stats();
+        if let Some(ref logger) = self.logger {
+            logger.log_difficulty_stats(min_diff, max_diff, avg_diff);
+        }
+    }
+
+    pub fn create_summary_report(&self) {
+        if let Some(ref logger) = self.logger {
+            logger.create_summary_report(self);
+        }
     }
 }

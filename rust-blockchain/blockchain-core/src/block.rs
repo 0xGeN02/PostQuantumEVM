@@ -1,8 +1,9 @@
 use sha2::{Sha256, Digest};
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use crate::pow::ProofOfWork;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     pub index: u64,
     pub timestamp: i64,

@@ -4,3 +4,6 @@ target/
 # C
 build/
 *.o
+
+# Run
+logs/

@@ -1,6 +1,7 @@
 mod block;
 mod blockchain;
 mod pow;
+mod logger;
 
 use blockchain::Blockchain;
 
@@ -14,6 +15,7 @@ fn main() {
     blockchain.add_block("Charlie pays Dave 3 coins".to_string());
     blockchain.add_block("Dave pays Eve 2 coins".to_string());
     blockchain.add_block("Eve pays Frank 1 coin".to_string());
+    blockchain.add_block("Frank pays Alice 4 coins".to_string());
 
     println!("\n=== Blockchain State ===");
     for block in &blockchain.blocks {
@@ -26,11 +28,17 @@ fn main() {
         );
     }
 
+    // Log the current blockchain state
+    blockchain.log_blockchain_state();
+
     println!("\n=== Validation ===");
-    println!("Is Blockchain valid? {}", blockchain.is_valid());
+    let _is_valid = blockchain.log_validation_result();
 
-    println!("{:#?}", blockchain);
+    println!("\n=== Difficulty Statistics ===");
+    blockchain.log_difficulty_stats();
 
-    let (min_diff, max_diff, avg_diff) = blockchain.get_difficulty_stats();
-    println!("Difficulty stats: Min={}, Max={}, Avg={:.2}", min_diff, max_diff, avg_diff);
+    // Create a comprehensive summary report
+    blockchain.create_summary_report();
+    
+    println!("\n✅ All blockchain data has been logged to the session directory");
 }
