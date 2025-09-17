@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "blockchain-core",
-    "cli"
+    "cli",
+    "pqc-algorithms"
 ]
 resolver = "3"
