@@ -3,6 +3,8 @@ name = "pqc-algorithms"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+
 [[bin]]
 name = "pqc-algorithms"
 path = "src/main.rs"
