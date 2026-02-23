@@ -1,0 +1,10 @@
+services:
+  qiskit-api:
+    build:
+      context: ./qiskit-api
+      dockerfile: Dockerfile
+    container_name: qiskit-api
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./qiskit-api/src:/qiskit-api/src
