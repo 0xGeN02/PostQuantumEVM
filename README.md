@@ -11,7 +11,8 @@
 
 </div>
 
-> [!IMPORTANT] **Preparing blockchain systems for the post-quantum era.**  
+> [!IMPORTANT]
+> **Preparing blockchain systems for the post-quantum era.**  
 > **This project demonstrates a forward-looking approach to cryptographic security.**
 
 ---
