@@ -7,7 +7,8 @@
 [![Solidity](https://img.shields.io/badge/Solidity-503D8B?style=for-the-badge&logo=ethereum&logoColor=white)](https://docs.soliditylang.org/en/latest/)
 [![License: MIT](https://img.shields.io/badge/License-APACHE_2.0-yellow.svg?style=for-the-badge)](LICENSE)
 
-> **Preparing blockchain systems for the post-quantum era.**  
+> [!NOTE]
+> **Preparing blockchain systems for the post-quantum era.** </br>
 > **This project demonstrates a forward-looking approach to cryptographic security.**
 
 ---
@@ -109,10 +110,9 @@ The **NIST Post-Quantum Cryptography Standardization** finalized its first stand
 
 ## Contact
 
-**0xGeN02**  
 Building secure and scalable systems at the intersection of cryptography and distributed systems.
 
-[GitHub Profile](https://github.com/0xGeN02)
+[0xGeN02](https://github.com/0xGeN02)
 
 ---
 
