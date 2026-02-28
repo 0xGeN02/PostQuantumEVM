@@ -1,6 +1,12 @@
+# Litereature
 
 [Verified_ML-KEM_(Kyber)_in_Rust](https://cryspen.com/post/ml-kem-implementation/)
 [Quantum-Safe_Blockchain_in_Hyperledger_Fabric](https://ieeexplore.ieee.org/document/10816500/figures#figures)
+[A_Survey_and_Comparison_of_Post-Quantum_and_Quantum_Blockchains](https://ieeexplore.ieee.org/abstract/document/10288193)
+[Quantum-secured_blockchain](https://iopscience.iop.org/article/10.1088/2058-9565/aabc6b/meta)
+[Quantum-resistance_in_blockchain_networks](https://www.nature.com/articles/s41598-023-32701-6)
+[Quantum_blockchain_based_on_asymmetric_quantum_encryption_and_a_stake_vote_consensus_algorithm](https://www.nature.com/articles/s41598-022-12412-0?fromPaywallRec=false)
+[A_Secure_Cryptocurrency_Scheme_Based_on_Post-Quantum_Blockchain](https://ieeexplore.ieee.org/abstract/document/8340794)
 [Rust_Crate_ML-DSA](https://docs.rs/ml-dsa/latest/ml_dsa/)
 [Rust_Crate_ML-KEM](https://docs.rs/ml-kem/latest/ml_kem/)
 [EVM_OPCODES](https://www.evm.codes/)
