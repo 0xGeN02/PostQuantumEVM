@@ -1,4 +1,4 @@
-# PQC-Blockchain 🚀
+# PostQuantum EVM
 
 ## A Post-Quantum Cryptography EVM Blockchain
 
@@ -9,7 +9,7 @@
 [![Solidity](https://img.shields.io/badge/Solidity-503D8B?style=for-the-badge&logo=ethereum&logoColor=white)](https://docs.soliditylang.org/en/latest/)
 [![License: MIT](https://img.shields.io/badge/License-APACHE_2.0-yellow.svg?style=for-the-badge)](LICENSE)
 
-> [!NOTE]
+> ![NOTE]
 > **Preparing blockchain systems for the post-quantum era.**  
 > **This project demonstrates a forward-looking approach to cryptographic security.**
 
@@ -20,6 +20,10 @@
 ## Overview
 
 The **Post-Quantum EVM Blockchain** is a forward-looking project that aims to adapt the Ethereum Virtual Machine (EVM) to the post-quantum era. By forking the Reth client, this project integrates post-quantum cryptographic primitives and introduces a comprehensive ecosystem to ensure the security and scalability of blockchain systems in the face of quantum computing threats.
+
+## Arquitecture
+
+![arquitecture](./docs/architecture.png)
 
 ### Key Components
 
