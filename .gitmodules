@@ -1,0 +1,4 @@
+[submodule "pq-reth"]
+	path = pq-reth
+	url = https://github.com/0xGeN02/pq-reth.git
+	branch = main
