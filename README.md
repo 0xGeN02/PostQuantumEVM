@@ -1,6 +1,8 @@
-# PQC-Blockchain
+# PQC-Blockchain 🚀
 
 ## A Post-Quantum Cryptography EVM Blockchain
+
+<div align="center">
 
 [![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Python](https://img.shields.io/badge/Python_3.13-3776AB?logo=python&logoColor=white&style=for-the-badge)](https://python.org)
@@ -8,93 +10,102 @@
 [![License: MIT](https://img.shields.io/badge/License-APACHE_2.0-yellow.svg?style=for-the-badge)](LICENSE)
 
 > [!NOTE]
-> **Preparing blockchain systems for the post-quantum era.** </br>
+> **Preparing blockchain systems for the post-quantum era.**  
 > **This project demonstrates a forward-looking approach to cryptographic security.**
+
+</div>
 
 ---
 
 ## Overview
 
-Current blockchain systems, such as Bitcoin and Ethereum, rely on cryptographic algorithms like **ECDSA** and **SHA-256**, which are vulnerable to quantum computers running **Shor's algorithm**. With the advent of quantum computing, these algorithms may become obsolete within the next decade. Recognizing this challenge, NIST has standardized post-quantum cryptographic algorithms to address these vulnerabilities.
+The **Post-Quantum EVM Blockchain** is a forward-looking project that aims to adapt the Ethereum Virtual Machine (EVM) to the post-quantum era. By forking the Reth client, this project integrates post-quantum cryptographic primitives and introduces a comprehensive ecosystem to ensure the security and scalability of blockchain systems in the face of quantum computing threats.
 
-**PQC-Blockchain** is a blockchain implementation in Rust that integrates post-quantum cryptographic primitives to ensure long-term security. This project highlights:
+### Key Components
 
-- Expertise in cryptographic principles and their practical application.
-- Systems-level programming in Rust, emphasizing safety and performance.
-- A modular and extensible architecture designed for real-world use cases.
+| Component                          | Description                                                                 |
+|------------------------------------|-----------------------------------------------------------------------------|
+| **Post-Quantum Cryptographic Library** | Rust-based library implementing NIST-standardized post-quantum algorithms. |
+| **Post-Quantum Wallets**           | Secure wallets for key management and transaction signing.                 |
+| **Qiskit API**                     | Python-based API for simulating quantum attacks and testing resilience.    |
+| **Post-Quantum Reth Client**       | Forked Reth client with post-quantum cryptographic primitives.             |
+| **EIP-Compatible Precompiled Contracts** | Custom precompiled contracts for post-quantum cryptographic operations.    |
 
----
-
-## Architecture
-
-![architecture](./docs/architecture.png)
+This project is designed to provide a robust foundation for building secure and scalable blockchain systems that are resistant to quantum computing threats, while maintaining compatibility with existing EVM-based smart contracts.
 
 ---
 
 ## Roadmap
 
-### Phase 1: Fundamentals and Demonstrations
+### Phase 1: Post-Quantum Cryptographic Library
 
-- Implement Grover's and Shor's algorithms to demonstrate vulnerabilities in classical cryptography.
-- Develop a basic blockchain using SHA-256 and ECDSA.
-- Use quantum simulators (e.g., Qiskit, QVM) to break the blockchain's cryptographic primitives.
+- Develop a Rust-based library implementing NIST-standardized post-quantum algorithms:
+  - CRYSTALS-Dilithium for digital signatures.
+  - CRYSTALS-Kyber for key encapsulation.
+  - SPHINCS+ for hash-based signatures.
+- Benchmark post-quantum algorithms against classical cryptographic alternatives.
 
-### Phase 2: Analysis and Design of Solutions
+### Phase 2: Post-Quantum Wallets
 
-- Analyze existing consensus protocols (e.g., Proof-of-Work, Proof-of-Stake) and their resistance to quantum attacks.
-- Evaluate the necessity of a quantum consensus protocol.
-- Design a post-quantum solution for the blockchain.
+- Design and implement post-quantum wallets for secure key management and transaction signing.
+- Integrate the post-quantum cryptographic library into wallet operations.
+- Ensure compatibility with the modified Reth client and EVM.
 
-### Phase 3: Implementation of Post-Quantum Algorithms
+### Phase 3: Qiskit API for Quantum Attack Simulation
 
-- Integrate CRYSTALS-Dilithium for digital signatures.
-- Integrate CRYSTALS-Kyber for key encapsulation.
-- Benchmark classical cryptographic algorithms against post-quantum alternatives.
+- Develop a Python-based API using Qiskit to simulate quantum attacks:
+  - Implement Grover's algorithm to test hash function vulnerabilities.
+  - Implement Shor's algorithm to demonstrate the breaking of classical cryptographic primitives.
+- Provide endpoints for testing blockchain resilience against quantum attacks.
 
-### Phase 4: Post-Quantum Blockchain Implementation
+### Phase 4: Post-Quantum Reth Client
 
-- Develop a post-quantum blockchain based on the designed solution.
+- Fork the Reth client and integrate the post-quantum cryptographic library.
+- Modify the Reth client to support post-quantum cryptographic primitives for:
+  - Transaction validation.
+  - Block verification.
+  - Consensus mechanisms.
+- Ensure compatibility with existing EVM-based smart contracts.
+
+### Phase 5: EIP-Compatible Precompiled Contracts
+
+- Define EIPs for post-quantum cryptographic operations in the EVM.
+- Implement precompiled contracts for:
+  - Post-quantum key derivation and transaction signing.
+  - Post-quantum hash functions (e.g., BLAKE3, SHA3).
+  - Post-quantum digital signatures (e.g., Dilithium).
+- Adapt opcode semantics and gas metering for post-quantum operations.
+
+### Phase 6: Post-Quantum Blockchain Implementation
+
+- Deploy the post-quantum blockchain using the modified Reth client.
 - Validate the blockchain's resistance to quantum attacks.
-- Provide a detailed explanation of why the solution is secure.
+- Provide detailed documentation and examples for developers to build post-quantum smart contracts.
 
-### Phase 5: Advanced Extensions
-
-- Implement pseudologic or pseudosmartcontracts for inter-node operations.
-- Research and explain rollups and zk-proofs (zero-knowledge proofs) that are quantum-resistant.
-- Integrate examples of zk-proofs and rollups into the blockchain.
-
-### Phase 6: Interactive CLI
+### Phase 7: Interactive CLI and Developer Tools
 
 - Develop a command-line interface (CLI) to:
-  - Launch the blockchain.
-  - Simulate quantum attacks (Grover's, Shor's).
-  - Test the post-quantum blockchain.
-  - Execute pseudologic or smart contracts.
-  - Demonstrate zk-proofs and rollups.
-- Provide detailed documentation for CLI usage.
+  - Initialize and manage the post-quantum blockchain.
+  - Create and manage post-quantum wallets.
+  - Simulate quantum attacks using the Qiskit API.
+  - Deploy and interact with post-quantum smart contracts.
+- Provide detailed documentation and examples for CLI usage.
 
 ---
 
 ## Why This Matters
 
-```
-Classical Blockchain              PQC-Blockchain
-─────────────────────             ──────────────────────
-ECDSA signatures         →       CRYSTALS-Dilithium (lattice-based)
-ECDH key exchange        →       CRYSTALS-Kyber (lattice-based)
-Vulnerable to Shor's     →       Quantum-resistant by design
-algorithm in ~2030s               NIST standardized (2024)
-```
+The rise of quantum computing poses a significant threat to classical cryptographic systems, including those used in blockchain technologies like Ethereum. Algorithms such as **ECDSA** and **SHA-256**, which are foundational to current blockchain security, are vulnerable to quantum attacks like **Shor's algorithm** and **Grover's algorithm**. This could render existing blockchain systems insecure within the next decade.
 
-The **NIST Post-Quantum Cryptography Standardization** finalized its first standards in 2024. This project implements these standards in a blockchain context, ensuring long-term security against quantum threats.
+The **Post-Quantum EVM Blockchain** addresses these challenges by:
 
----
+- **Post-Quantum Cryptography**: Integrating NIST-standardized post-quantum algorithms (e.g., CRYSTALS-Dilithium, CRYSTALS-Kyber, SPHINCS+) to replace vulnerable classical cryptographic primitives.
+- **EVM Compatibility**: Ensuring that the blockchain remains compatible with existing Ethereum smart contracts while introducing post-quantum security.
+- **Precompiled Contracts**: Providing EIP-compatible precompiled contracts for post-quantum cryptographic operations, enabling developers to build quantum-resistant smart contracts.
+- **Post-Quantum Wallets**: Offering secure wallets for key management and transaction signing using post-quantum cryptography.
+- **Quantum Attack Simulation**: Leveraging the Qiskit API to simulate quantum attacks and validate the blockchain's resilience.
 
-## Contact
-
-Building secure and scalable systems at the intersection of cryptography and distributed systems.
-
-[0xGeN02](https://github.com/0xGeN02)
+This project is a critical step toward ensuring the long-term security and scalability of blockchain systems in the quantum era, enabling developers and organizations to future-proof their decentralized applications and infrastructure.
 
 ---
 
