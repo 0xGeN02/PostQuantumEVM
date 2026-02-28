@@ -27,24 +27,7 @@ Current blockchain systems, such as Bitcoin and Ethereum, rely on cryptographic 
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────┐
-│                      CLI Layer                       │
-│               (User Interface & Commands)            │
-└──────────────────────┬──────────────────────────────┘
-                       │
-         ┌─────────────┴─────────────┐
-         ▼                           ▼
-┌─────────────────┐       ┌───────────────────┐
-│ Blockchain Core │◄─────►│  PQC Algorithms   │
-│                 │       │                   │
-│  • Blocks       │       │  • Lattice-based  │
-│  • Transactions │       │  • Hash-based     │
-│  • Consensus    │       │  • Code-based     │
-│  • Merkle Trees │       │  • NIST Standards │
-│  • Chain State  │       │                   │
-└─────────────────┘       └───────────────────┘
-```
+![architecture](./docs/architecture.png)
 
 ---
 
@@ -66,7 +49,6 @@ Current blockchain systems, such as Bitcoin and Ethereum, rely on cryptographic 
 
 - Integrate CRYSTALS-Dilithium for digital signatures.
 - Integrate CRYSTALS-Kyber for key encapsulation.
-- Implement SPHINCS+ for hash-based signatures.
 - Benchmark classical cryptographic algorithms against post-quantum alternatives.
 
 ### Phase 4: Post-Quantum Blockchain Implementation
