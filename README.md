@@ -9,11 +9,10 @@
 [![Solidity](https://img.shields.io/badge/Solidity-503D8B?style=for-the-badge&logo=ethereum&logoColor=white)](https://docs.soliditylang.org/en/latest/)
 [![License: MIT](https://img.shields.io/badge/License-APACHE_2.0-yellow.svg?style=for-the-badge)](LICENSE)
 
-> [!IMPORTANT]
-> **Preparing blockchain systems for the post-quantum era.**  
-> **This project demonstrates a forward-looking approach to cryptographic security.**
-
 </div>
+
+> [!IMPORTANT] **Preparing blockchain systems for the post-quantum era.**  
+> **This project demonstrates a forward-looking approach to cryptographic security.**
 
 ---
 
