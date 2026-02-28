@@ -2,3 +2,7 @@
 	path = pq-reth
 	url = https://github.com/0xGeN02/pq-reth.git
 	branch = main
+[submodule "ml-lattice-rs"]
+	path = ml-lattice-rs
+	url = https://github.com/0xGeN02/ml-lattice-rs.git
+	branch = main
