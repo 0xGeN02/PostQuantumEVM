@@ -9,7 +9,7 @@
 [![Solidity](https://img.shields.io/badge/Solidity-503D8B?style=for-the-badge&logo=ethereum&logoColor=white)](https://docs.soliditylang.org/en/latest/)
 [![License: MIT](https://img.shields.io/badge/License-APACHE_2.0-yellow.svg?style=for-the-badge)](LICENSE)
 
-> ![NOTE]
+> [!IMPORTANT]
 > **Preparing blockchain systems for the post-quantum era.**  
 > **This project demonstrates a forward-looking approach to cryptographic security.**
 
@@ -110,6 +110,20 @@ The **Post-Quantum EVM Blockchain** addresses these challenges by:
 - **Quantum Attack Simulation**: Leveraging the Qiskit API to simulate quantum attacks and validate the blockchain's resilience.
 
 This project is a critical step toward ensuring the long-term security and scalability of blockchain systems in the quantum era, enabling developers and organizations to future-proof their decentralized applications and infrastructure.
+
+---
+
+## Author
+
+**0xGeN02**  
+Building secure and scalable systems at the intersection of cryptography and distributed systems.  
+[GitHub Profile](https://github.com/0xGeN02)
+
+---
+
+## Published Paper
+
+The research paper detailing the design and implementation of the Post-Quantum EVM Blockchain will be published soon. Stay tuned for updates!
 
 ---
 
