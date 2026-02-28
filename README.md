@@ -1,9 +1,11 @@
 # PQC-Blockchain
 
-## A Post-Quantum Cryptography Blockchain Implementation in Rust
+## A Post-Quantum Cryptography EVM Blockchain
 
 [![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+[![Python](https://img.shields.io/badge/Python_3.13-3776AB?logo=python&logoColor=white&style=for-the-badge)](https://python.org)
+[![Solidity](https://img.shields.io/badge/Solidity-503D8B?style=for-the-badge&logo=ethereum&logoColor=white)](https://docs.soliditylang.org/en/latest/)
+[![License: MIT](https://img.shields.io/badge/License-APACHE_2.0-yellow.svg?style=for-the-badge)](LICENSE)
 
 > **Preparing blockchain systems for the post-quantum era.**  
 > **This project demonstrates a forward-looking approach to cryptographic security.**
