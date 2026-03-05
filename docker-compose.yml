@@ -3,9 +3,14 @@ services:
     build:
       context: ./qiskit-api
       dockerfile: Dockerfile
+    image: pqevm-qiskit-api:latest
     container_name: qiskit-api
     ports:
       - "8888:8888"
     volumes:
       - ./qiskit-api/src:/qiskit-api/src
       - ./qiskit-api/lib:/qiskit-api/lib
+
+networks:
+  default:
+    name: pqevm-network
