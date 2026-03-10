@@ -10,7 +10,7 @@ L        : output    = 4 bits
 N_ROUNDS : rounds    = 2
 
 Simplifications vs real Keccak-f[1600]:
-  - 1D state instead of 5×5×64 lanes
+  - 1D state instead of 5*5*64 lanes
   - rho: cyclic shift by 1 (not offset table)
   - theta and pi steps omitted (both are linear; chi dominates oracle cost)
   - 2 rounds instead of 24
