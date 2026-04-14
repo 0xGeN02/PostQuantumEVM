@@ -20,3 +20,4 @@
 [NIST_FIPS_205_SLH-DSA](https://csrc.nist.gov/pubs/fips/205/final)
 [ML-KEM_seed_standarization](https://words.filippo.io/ml-kem-seeds/)
 [Quantum_Resource_Analysis_Keccak/SHA-3_Classical_to_Quantum_using_Qiskit_Modeling](https://arxiv.org/abs/2512.14759)
+[Choosing_Coordinate_Forms_Solving_ECDLP_Using_Shor’s_Algorithm](https://arxiv.org/html/2502.12441v1)
