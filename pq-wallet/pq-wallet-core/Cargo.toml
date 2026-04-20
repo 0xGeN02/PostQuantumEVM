@@ -1,0 +1,26 @@
+[package]
+name = "pq-wallet-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Core library for the post-quantum wallet — keygen, keystore, signing, RPC client"
+
+[dependencies]
+dilithium = { workspace = true }
+alloy-primitives = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+aes-gcm = { workspace = true }
+argon2 = { workspace = true }
+rand = { workspace = true }
+hex = { workspace = true }
+sha3 = "0.11"
+hybrid-array = { version = "0.4", features = ["extra-sizes"] }
+typenum = "1"
+
+[dev-dependencies]
+tempfile = "3"

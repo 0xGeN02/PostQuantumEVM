@@ -1,0 +1,47 @@
+[workspace]
+members = [
+    "pq-wallet-core",
+    "pq-wallet-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/PostQuantumEVM/pq-wallet"
+
+[workspace.dependencies]
+# Internal
+pq-wallet-core = { path = "pq-wallet-core" }
+
+# Post-quantum crypto
+dilithium = { path = "../ml-lattice-rs/dilithium" }
+
+# Alloy / Ethereum types
+alloy-primitives = { version = "1.5", features = ["serde"] }
+
+# Serialisation
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# CLI
+clap = { version = "4", features = ["derive", "color"] }
+
+# Keystore encryption
+aes-gcm = "0.10"
+argon2 = "0.5"
+rand = { version = "0.8", features = ["getrandom"] }
+
+# Hex encoding
+hex = "0.4"
+
+# HTTP client (para RPC)
+reqwest = { version = "0.12", features = ["json"] }
