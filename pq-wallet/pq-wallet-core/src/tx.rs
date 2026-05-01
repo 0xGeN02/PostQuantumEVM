@@ -1,8 +1,8 @@
 //! Post-quantum transaction types (local, minimal — no alloy-consensus dependency).
 //!
-//! Wire format (EIP-2718 type 0x04):
+//! Wire format (EIP-2718 type 0x50):
 //! ```text
-//! 0x04 || RLP([
+//! 0x50 || RLP([
 //!   chain_id,
 //!   nonce,
 //!   gas_price,
@@ -21,7 +21,10 @@ use serde::{Deserialize, Serialize};
 use sha3::{Shake256, digest::{ExtendableOutput, Update, XofReader}};
 
 /// EIP-2718 transaction type for PQ transactions.
-pub const PQ_TX_TYPE: u8 = 0x04;
+///
+/// `0x50` ('P') — avoids collision with EIP-7702 (type 4) and maps to
+/// revm `TransactionType::Custom` so Prague-era validation is skipped.
+pub const PQ_TX_TYPE: u8 = 0x50;
 
 /// Unsigned post-quantum transaction fields.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,7 +43,7 @@ pub struct PqTxRequest {
 }
 
 impl PqTxRequest {
-    /// Canonical signing hash: `shake256(0x04 || chain_id || nonce || ..., 32)`.
+    /// Canonical signing hash: `shake256(0x50 || chain_id || nonce || ..., 32)`.
     ///
     /// Uses SHAKE-256 (XOF) for quantum-safe hashing, aligned with ML-DSA-65.
     pub fn signing_hash(&self) -> B256 {
@@ -102,7 +105,7 @@ impl PqSignedTx {
     }
 
     /// Encode as EIP-2718 wire format:
-    /// `0x04 || RLP([chain_id, nonce, gas_price, gas_limit, to, value, input, sig, pk])`
+    /// `0x50 || RLP([chain_id, nonce, gas_price, gas_limit, to, value, input, sig, pk])`
     ///
     /// This format is compatible with the node's `Decodable2718` implementation.
     pub fn encode(&self) -> Vec<u8> {

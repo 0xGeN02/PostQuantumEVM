@@ -5,6 +5,8 @@
 //!   address  Show the address stored in a keystore (no passphrase needed)
 //!   balance  Query ETH balance via JSON-RPC
 //!   send     Build, sign and broadcast a PQ transaction
+//!   deploy   Deploy a contract (send tx with to=None, data=init code)
+//!   receipt  Poll for a transaction receipt
 //!   sign     Sign an arbitrary message and print the hex signature
 
 use std::path::PathBuf;
@@ -110,6 +112,51 @@ enum Command {
         /// Message to sign (UTF-8 string).
         message: String,
     },
+
+    /// Deploy a smart contract (sends a tx with no recipient, data = init code).
+    Deploy {
+        /// Keystore file path.
+        #[arg(short, long, default_value = "keystore.json")]
+        keystore: PathBuf,
+
+        /// Passphrase to decrypt the keystore.
+        #[arg(short, long)]
+        passphrase: Option<String>,
+
+        /// Contract init code (hex, with or without 0x prefix).
+        #[arg(long)]
+        code: String,
+
+        /// Gas limit (default: 1000000).
+        #[arg(long, default_value = "1000000")]
+        gas_limit: u64,
+
+        /// Gas price in wei. If not set, fetched from node.
+        #[arg(long)]
+        gas_price: Option<u128>,
+
+        /// Value to send along with deployment in wei.
+        #[arg(long, default_value = "0")]
+        value: u128,
+
+        /// JSON-RPC endpoint URL.
+        #[arg(short, long, default_value = "http://localhost:8545")]
+        rpc: String,
+    },
+
+    /// Get a transaction receipt by hash (polls until mined or timeout).
+    Receipt {
+        /// Transaction hash (hex with 0x prefix).
+        tx_hash: String,
+
+        /// JSON-RPC endpoint URL.
+        #[arg(short, long, default_value = "http://localhost:8545")]
+        rpc: String,
+
+        /// Timeout in seconds to wait for mining (0 = single poll, no wait).
+        #[arg(long, default_value = "30")]
+        timeout: u64,
+    },
 }
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
@@ -125,6 +172,10 @@ async fn main() -> Result<()> {
         Command::Send { keystore, passphrase, to, value, gas_limit, gas_price, data, rpc, dry_run } => {
             cmd_send(keystore, passphrase, to, value, gas_limit, gas_price, data, rpc, dry_run).await
         }
+        Command::Deploy { keystore, passphrase, code, gas_limit, gas_price, value, rpc } => {
+            cmd_deploy(keystore, passphrase, code, gas_limit, gas_price, value, rpc).await
+        }
+        Command::Receipt { tx_hash, rpc, timeout } => cmd_receipt(tx_hash, rpc, timeout).await,
         Command::Sign { keystore, passphrase, message } => cmd_sign(keystore, passphrase, message),
     }
 }
@@ -260,6 +311,89 @@ fn cmd_sign(keystore: PathBuf, passphrase: Option<String>, message: String) -> R
     println!("Signer:    {}", keypair.address());
     println!("Signature: {sig_hex}");
     Ok(())
+}
+
+async fn cmd_deploy(
+    keystore: PathBuf,
+    passphrase: Option<String>,
+    code: String,
+    gas_limit: u64,
+    gas_price: Option<u128>,
+    value: u128,
+    rpc: String,
+) -> Result<()> {
+    let pass = resolve_passphrase(passphrase, false)?;
+    let keypair = Keystore::load(&keystore, &pass)
+        .with_context(|| format!("decrypting keystore {}", keystore.display()))?;
+
+    let client = pq_wallet_core::RpcClient::new(&rpc);
+
+    let chain_id = client.chain_id().await.context("fetching chain_id")?;
+    let nonce = client.get_nonce(keypair.address()).await.context("fetching nonce")?;
+    let gp = match gas_price {
+        Some(p) => p,
+        None => client.gas_price().await.context("fetching gas_price")?,
+    };
+
+    let input = hex::decode(code.strip_prefix("0x").unwrap_or(&code))
+        .context("decoding contract init code hex")?;
+
+    let tx = PqTxRequest {
+        chain_id,
+        nonce,
+        to: None, // contract creation
+        value,
+        gas_limit,
+        gas_price: gp,
+        input,
+    };
+
+    let signer = PqSigner::new(&keypair);
+    let signed = signer.sign(tx);
+    let raw_hex = format!("0x{}", hex::encode(signed.encode()));
+
+    print!("Deploying contract... ");
+    let tx_hash = client.send_raw_transaction(&raw_hex).await.context("broadcasting deploy tx")?;
+    println!("done.");
+    println!("Transaction hash: {tx_hash}");
+    println!("Nonce:            {nonce}");
+    println!();
+    println!("Use `pq-wallet receipt {tx_hash}` to get the contract address.");
+
+    Ok(())
+}
+
+async fn cmd_receipt(tx_hash: String, rpc: String, timeout: u64) -> Result<()> {
+    let client = pq_wallet_core::RpcClient::new(&rpc);
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
+
+    loop {
+        match client.get_transaction_receipt(&tx_hash).await.context("fetching receipt")? {
+            Some(receipt) => {
+                let status_str = if receipt.status == "0x1" { "SUCCESS" } else { "REVERTED" };
+                println!("Transaction: {}", receipt.transaction_hash);
+                println!("Status:      {} ({})", status_str, receipt.status);
+                println!("Block:       {}", receipt.block_number);
+                println!("Gas used:    {}", receipt.gas_used);
+                println!("From:        {}", receipt.from);
+                if let Some(ref to) = receipt.to {
+                    println!("To:          {to}");
+                }
+                if let Some(ref addr) = receipt.contract_address {
+                    println!("Contract:    {addr}");
+                }
+                return Ok(());
+            }
+            None => {
+                if timeout == 0 || std::time::Instant::now() >= deadline {
+                    println!("Transaction {tx_hash} is still pending (not yet mined).");
+                    return Ok(());
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+        }
+    }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

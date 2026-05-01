@@ -37,6 +37,6 @@ pub mod tx;
 pub use error::WalletError;
 pub use keygen::PqKeypair;
 pub use keystore::Keystore;
-pub use rpc::RpcClient;
+pub use rpc::{RpcClient, TxReceipt};
 pub use signer::PqSigner;
 pub use tx::{PqTxRequest, PQ_TX_TYPE};

@@ -4,6 +4,7 @@
 //! - `eth_getBalance`
 //! - `eth_getTransactionCount` (nonce)
 //! - `eth_sendRawTransaction`
+//! - `eth_getTransactionReceipt`
 //! - `eth_chainId`
 //! - `eth_gasPrice`
 
@@ -89,6 +90,19 @@ impl RpcClient {
             .ok_or_else(|| WalletError::RpcParse("expected string tx hash".into()))
     }
 
+    /// Get the transaction receipt for a given tx hash.
+    ///
+    /// Returns `None` if the transaction is still pending.
+    pub async fn get_transaction_receipt(&self, tx_hash: &str) -> Result<Option<TxReceipt>, WalletError> {
+        let result = self.call("eth_getTransactionReceipt", json!([tx_hash])).await?;
+        if result.is_null() {
+            return Ok(None);
+        }
+        let receipt: TxReceipt = serde_json::from_value(result)
+            .map_err(|e| WalletError::RpcParse(format!("receipt parse error: {e}")))?;
+        Ok(Some(receipt))
+    }
+
     // ── Internal ──────────────────────────────────────────────────────────────
 
     async fn call(&self, method: &str, params: Value) -> Result<Value, WalletError> {
@@ -117,4 +131,32 @@ fn parse_hex_u64(v: &Value) -> Result<u64, WalletError> {
     let s = s.strip_prefix("0x").unwrap_or(s);
     u64::from_str_radix(s, 16)
         .map_err(|e| WalletError::RpcParse(format!("u64 parse error: {e}")))
+}
+
+// ─── Receipt type ────────────────────────────────────────────────────────────
+
+/// Transaction receipt returned by `eth_getTransactionReceipt`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TxReceipt {
+    /// Transaction hash.
+    pub transaction_hash: String,
+    /// Block hash containing this tx.
+    pub block_hash: String,
+    /// Block number (hex).
+    pub block_number: String,
+    /// Transaction index in the block (hex).
+    pub transaction_index: String,
+    /// Sender address.
+    pub from: String,
+    /// Recipient address (null for contract creation).
+    pub to: Option<String>,
+    /// Contract address if this was a contract creation.
+    pub contract_address: Option<String>,
+    /// Cumulative gas used in the block up to this tx (hex).
+    pub cumulative_gas_used: String,
+    /// Gas used by this tx (hex).
+    pub gas_used: String,
+    /// Status: "0x1" = success, "0x0" = revert.
+    pub status: String,
 }
