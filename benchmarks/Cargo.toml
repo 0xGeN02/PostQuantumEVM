@@ -1,0 +1,36 @@
+[package]
+name = "pqevm-benchmarks"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Gas calibration benchmarks: ML-DSA-65 vs ECDSA/secp256k1, SHAKE-256 vs Keccak-256"
+
+[dependencies]
+# Post-quantum crypto (ML-DSA-65)
+dilithium = { path = "../ml-lattice-rs/dilithium" }
+
+# Classical crypto (ECDSA/secp256k1)
+k256 = { version = "0.13", features = ["ecdsa"] }
+secp256k1 = { version = "0.30", features = ["global-context", "recovery", "rand"] }
+
+# Hash functions
+sha3 = "0.11"
+tiny-keccak = { version = "2.0", features = ["keccak"] }
+
+# Alloy RLP for tx encoding
+alloy-rlp = { version = "0.3", features = ["derive"] }
+alloy-primitives = { version = "1.4", features = ["rlp"] }
+
+# Randomness
+rand = "0.8"
+
+# Benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "crypto_ops"
+harness = false
+
+[[bench]]
+name = "tx_encoding"
+harness = false
