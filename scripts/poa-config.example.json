@@ -1,0 +1,18 @@
+{
+  "slot_time_ms": 5000,
+  "local_address": "0x1111111111111111111111111111111111111111",
+  "validators": [
+    {
+      "address": "0x1111111111111111111111111111111111111111",
+      "public_key": "0x<ml-dsa-65-verifying-key-hex-1952-bytes>"
+    },
+    {
+      "address": "0x2222222222222222222222222222222222222222",
+      "public_key": "0x<ml-dsa-65-verifying-key-hex-1952-bytes>"
+    },
+    {
+      "address": "0x3333333333333333333333333333333333333333",
+      "public_key": "0x<ml-dsa-65-verifying-key-hex-1952-bytes>"
+    }
+  ]
+}

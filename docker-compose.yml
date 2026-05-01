@@ -1,33 +1,42 @@
-# PostQuantumEVM — Multi-node Docker Compose
+# PostQuantumEVM — PoA Multi-Validator Docker Compose
 #
 # Architecture:
-#   - pq-node-1: Producer node (--dev --dev.block-time 3s, auto-mines)
-#   - pq-node-2: Follower node (syncs from producer via P2P)
-#   - pq-node-3: Follower node (syncs from producer via P2P)
-#   - qiskit-api: Quantum simulation API (existing)
+#   - pq-validator-1: PoA validator (proposes blocks 0, 3, 6, ...)
+#   - pq-validator-2: PoA validator (proposes blocks 1, 4, 7, ...)
+#   - pq-validator-3: PoA validator (proposes blocks 2, 5, 8, ...)
+#   - qiskit-api: Quantum simulation API
+#
+# Consensus: Round-robin PoA with ML-DSA-65 block sealing.
+# Each validator mines only on its turn (5s slot time by default).
+#
+# Prerequisites:
+#   1. Generate validator keys: ./scripts/generate-validator-keys.sh
+#   2. Build image: docker compose build
 #
 # Usage:
 #   docker compose up -d
-#   docker compose logs -f pq-node-1
+#   docker compose logs -f pq-validator-1
 #
 # RPC endpoints:
-#   Producer: http://localhost:8545
-#   Follower: http://localhost:8546, http://localhost:8547
+#   Validator 1: http://localhost:8545
+#   Validator 2: http://localhost:8546
+#   Validator 3: http://localhost:8547
 
 services:
-  # ─── Producer Node (auto-mines blocks) ─────────────────────────────────────
-  pq-node-1:
+  # ─── PoA Validator 1 ────────────────────────────────────────────────────────
+  pq-validator-1:
     build:
       context: .
       dockerfile: Dockerfile.pq-reth
     image: pqevm-node:latest
-    container_name: pq-node-1
+    container_name: pq-validator-1
+    environment:
+      - PQ_POA_CONFIG=/app/poa-config.json
     command:
       - "node"
       - "--chain=/app/genesis.json"
       - "--datadir=/data"
       - "--dev"
-      - "--dev.block-time=3s"
       - "--http"
       - "--http.addr=0.0.0.0"
       - "--http.port=8545"
@@ -40,7 +49,8 @@ services:
       - "30303:30303"
       - "30303:30303/udp"
     volumes:
-      - pq-node-1-data:/data
+      - pq-validator-1-data:/data
+      - ./scripts/validator-keys/poa-config-1.json:/app/poa-config.json:ro
     networks:
       pqevm:
         ipv4_address: 10.5.0.10
@@ -51,17 +61,20 @@ services:
       timeout: 5s
       retries: 5
 
-  # ─── Follower Node 2 ───────────────────────────────────────────────────────
-  pq-node-2:
+  # ─── PoA Validator 2 ────────────────────────────────────────────────────────
+  pq-validator-2:
     build:
       context: .
       dockerfile: Dockerfile.pq-reth
     image: pqevm-node:latest
-    container_name: pq-node-2
+    container_name: pq-validator-2
+    environment:
+      - PQ_POA_CONFIG=/app/poa-config.json
     command:
       - "node"
       - "--chain=/app/genesis.json"
       - "--datadir=/data"
+      - "--dev"
       - "--http"
       - "--http.addr=0.0.0.0"
       - "--http.port=8545"
@@ -75,26 +88,35 @@ services:
       - "30304:30304"
       - "30304:30304/udp"
     volumes:
-      - pq-node-2-data:/data
+      - pq-validator-2-data:/data
+      - ./scripts/validator-keys/poa-config-2.json:/app/poa-config.json:ro
     networks:
       pqevm:
         ipv4_address: 10.5.0.11
     depends_on:
-      pq-node-1:
+      pq-validator-1:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8545", "-X", "POST", "-H", "Content-Type: application/json", "-d", "{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # ─── Follower Node 3 ───────────────────────────────────────────────────────
-  pq-node-3:
+  # ─── PoA Validator 3 ────────────────────────────────────────────────────────
+  pq-validator-3:
     build:
       context: .
       dockerfile: Dockerfile.pq-reth
     image: pqevm-node:latest
-    container_name: pq-node-3
+    container_name: pq-validator-3
+    environment:
+      - PQ_POA_CONFIG=/app/poa-config.json
     command:
       - "node"
       - "--chain=/app/genesis.json"
       - "--datadir=/data"
+      - "--dev"
       - "--http"
       - "--http.addr=0.0.0.0"
       - "--http.port=8545"
@@ -108,16 +130,22 @@ services:
       - "30305:30305"
       - "30305:30305/udp"
     volumes:
-      - pq-node-3-data:/data
+      - pq-validator-3-data:/data
+      - ./scripts/validator-keys/poa-config-3.json:/app/poa-config.json:ro
     networks:
       pqevm:
         ipv4_address: 10.5.0.12
     depends_on:
-      pq-node-1:
+      pq-validator-1:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8545", "-X", "POST", "-H", "Content-Type: application/json", "-d", "{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # ─── Qiskit Quantum Simulation API (existing) ─────────────────────────────
+  # ─── Qiskit Quantum Simulation API ─────────────────────────────────────────
   qiskit-api:
     build:
       context: ./qiskit-api
@@ -134,9 +162,9 @@ services:
         ipv4_address: 10.5.0.20
 
 volumes:
-  pq-node-1-data:
-  pq-node-2-data:
-  pq-node-3-data:
+  pq-validator-1-data:
+  pq-validator-2-data:
+  pq-validator-3-data:
 
 networks:
   pqevm:
