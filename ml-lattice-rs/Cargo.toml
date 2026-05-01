@@ -1,0 +1,23 @@
+[workspace]
+members = ["kyber", "dilithium"]
+resolver = "2"
+
+[package]
+name = "ml-lattice-rs"
+version = "0.1.0"
+license = "Apache-2.0"
+authors = [ "0xGeN02" ]
+edition = "2024"
+readme = "README.md"
+keywords = [ "quantum", "cryptography", "security" ]
+categories = [ "cryptography" ]
+description = "Rust implementation of lattice-based post-quantum cryptographic algorithms, including Kyber and Dilithium."
+homepage = ""
+repository = "https://github.com/0xGeN02/ml-lattice-rs"
+
+[lib]
+name = "ml_lattice_rs"
+
+[dependencies]
+kyber = { path = "./kyber" }
+dilithium = { path = "./dilithium" }

@@ -1,0 +1,13 @@
+[package]
+name = "kyber"
+version = "0.1.0"
+license = "Apache-2.0"
+authors = ["0xGeN02"]
+edition = "2024"
+description = "ML-KEM (CRYSTALS-Kyber) key encapsulation mechanism — NIST FIPS 203"
+
+[dependencies]
+# getrandom enables generate_keypair() and encapsulate() convenience methods
+ml-kem = { version = "0.3.0-rc.2", features = ["zeroize", "getrandom"] }
+thiserror = "2"
+hex = "0.4"
