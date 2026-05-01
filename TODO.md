@@ -1,23 +1,21 @@
 # TODO - PostQuantumEVM Integration
 
-## Overall Status: ~75-80% complete
+## Overall Status: ~85-90% complete
 
-All 7 PQ crates compile successfully and the architecture is defined. Final integration work remains to achieve a functional node.
+Phases 1 and 2 are complete. The PQ node starts, produces blocks, has the PQHASH opcode, and all classical precompiles are disabled. Next: wallet wire format fix and multi-node deployment.
 
 ---
 
 ## Critical (Blocking node execution)
 
-- [ ] **PQ node executable binary**
-  - `pq-reth/bin/reth/src/main.rs` still launches `EthereumNode`, NOT `PqNode`
-  - Create a binary (e.g., `bin/pq-reth/src/main.rs`) that instantiates `PqNode` with the `NodeBuilder`
-  - Without this, the PQ node cannot be started
+- [x] **PQ node executable binary** — DONE
+  - `pq-reth/bin/pq-reth/src/main.rs` launches `PqNode` with the `NodeBuilder`
+  - Compiles and runs successfully in `--dev` mode
 
-- [ ] **Genesis / PQ Chain Spec**
-  - No genesis file or chain spec exists for the PQ chain
-  - Define: chain_id, initial allocs, network parameters (gas limits, block time, etc.)
-  - Pre-fund accounts for the demo
-  - Without this, the node cannot bootstrap a new network
+- [x] **Genesis / PQ Chain Spec** — DONE
+  - `pq-reth/bin/pq-reth/genesis.json` with chain_id=20561 (0x5051)
+  - 8 pre-funded accounts (10,000 ETH each)
+  - All hardforks activated from genesis (including Prague)
 
 ---
 
@@ -58,7 +56,8 @@ All 7 PQ crates compile successfully and the architecture is defined. Final inte
   - Evaluate switching to 32-byte output for better Solidity ergonomics
 
 - [ ] **Disable classical elliptic curve precompiles (12 precompiles)**
-  - Currently only `0x01` (ecrecover) is disabled, but 12 more use classical crypto broken by Shor's algorithm
+  - ~~Currently only `0x01` (ecrecover) is disabled, but 12 more use classical crypto broken by Shor's algorithm~~
+  - [x] **ALL 13 classical precompiles now disabled** — implemented in `pq_precompiles()` in `reth-pq-evm/src/lib.rs`
   - **BN254 (broken):**
     - `0x06` ecAdd — point addition on classical curve
     - `0x07` ecMul — scalar multiplication on classical curve
@@ -87,23 +86,17 @@ All 7 PQ crates compile successfully and the architecture is defined. Final inte
   - `0x09` Blake2f — hash compression function
   - Document why they are kept (quantum security justification)
 
-- [ ] **New opcode `0x21 PQHASH` — native SHAKE-256 in the EVM**
-  - Add opcode `0x21` computing SHAKE-256 (same hash ML-DSA uses internally)
+- [x] **New opcode `0x21 PQHASH` — native SHAKE-256 in the EVM** — DONE
+  - Opcode `0x21` computing SHAKE-256 (same hash ML-DSA uses internally)
   - Stack: `(offset, length) → hash_256` (same interface as KECCAK256 at 0x20)
-  - Cryptographic consistency: ML-DSA + SHAKE-256 hashing = same family end-to-end
-  - Slot `0x21` is free and semantically adjacent to KECCAK256 (`0x20`)
-  - Implement via `instructions.insert_instruction(0x21, pq_hash_handler)` in revm
-  - Gas: similar to KECCAK256 (30 base + 6 per word) — SHAKE-256 has comparable performance
-  - Smart contracts can choose PQHASH for maximum post-quantum security
+  - Gas: 30 base + 6 per word (same model as KECCAK256)
+  - Implemented via `evm.instruction.insert_instruction(0x21, ...)` in `PqEvmFactory`
 
-- [ ] **Migrate PQ protocol hashing to SHAKE-256**
-  - Address derivation: change `keccak256(pk)[12..]` → `shake256(pk, 32)[12..]`
-  - Transaction signing hash: switch to SHAKE-256
-  - Transaction hash: switch to SHAKE-256
-  - Affects: `reth-pq-primitives/src/signature.rs`, `transaction.rs`
-  - Affects: `pq-wallet-core/src/keygen.rs`, `signer.rs`
-  - DO NOT change the state trie (MPT keeps using keccak256 — too invasive)
-  - Justification: entire PQ layer uses the same hash primitive (SHAKE-256/SHA-3 family)
+- [x] **Migrate PQ protocol hashing to SHAKE-256** — DONE
+  - Address derivation: `shake256(pk, 32)[12..]` (both node and wallet)
+  - Transaction signing hash: SHAKE-256
+  - Transaction hash: SHAKE-256
+  - State trie kept using keccak256 (too invasive to change)
 
 - [x] **Existing EVM opcodes — analysis completed**
   - No EVM opcode performs elliptic curve operations internally
@@ -260,21 +253,26 @@ All 7 PQ crates compile successfully and the architecture is defined. Final inte
 - [x] Successful compilation of all PQ crates
 - [x] EVM opcode analysis completed
 - [x] Addresses remain 20 bytes (compatible with existing tooling)
+- [x] **PQ node binary (`bin/pq-reth/`) — launches PqNode, starts in --dev mode**
+- [x] **Genesis file (chain_id=20561, pre-funded accounts, Prague from genesis)**
+- [x] **PQHASH opcode (0x21) — native SHAKE-256 in the EVM**
+- [x] **Migrated all PQ hashing to SHAKE-256 (address, signing_hash, tx_hash)**
+- [x] **Disabled 13 classical elliptic curve precompiles (Shor-vulnerable)**
 
 ---
 
 ## Recommended execution order
 
-### Phase 1 — Functional node
-1. Create the `pq-reth` binary that launches `PqNode`
-2. Create genesis.json with PQ chain spec (pre-fund demo accounts)
-3. Verify the node starts in `--dev` mode and produces blocks
+### Phase 1 — Functional node ✅ COMPLETE
+1. ~~Create the `pq-reth` binary that launches `PqNode`~~ ✅
+2. ~~Create genesis.json with PQ chain spec (pre-fund demo accounts)~~ ✅
+3. ~~Verify the node starts in `--dev` mode and produces blocks~~ ✅
 
-### Phase 2 — SHAKE-256 and new opcode
-4. Implement opcode `0x21 PQHASH` (SHAKE-256) in `reth-pq-evm`
-5. Migrate PQ address derivation to SHAKE-256 (`reth-pq-primitives`, `pq-wallet`)
-6. Migrate tx hashing (signing_hash, tx_hash) to SHAKE-256
-7. Disable classical curve precompiles (0x06-0x08, 0x0a-0x13)
+### Phase 2 — SHAKE-256 and new opcode ✅ COMPLETE
+4. ~~Implement opcode `0x21 PQHASH` (SHAKE-256) in `reth-pq-evm`~~ ✅
+5. ~~Migrate PQ address derivation to SHAKE-256 (`reth-pq-primitives`, `pq-wallet`)~~ ✅
+6. ~~Migrate tx hashing (signing_hash, tx_hash) to SHAKE-256~~ ✅
+7. ~~Disable classical curve precompiles (0x06-0x08, 0x0a-0x13)~~ ✅
 
 ### Phase 3 — Compatible wallet
 8. Fix wallet wire format (RLP encoding compatible with the node)
