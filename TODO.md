@@ -1,8 +1,8 @@
 # TODO - PostQuantumEVM Integration
 
-## Overall Status: ~97% complete — All 6 Phases DONE + Gas Analysis
+## Overall Status: ~98% complete — All 6 Phases DONE + Gas Analysis + PoA Consensus
 
-All phases are complete. The PQ node starts in dev mode, mines blocks with PQ transactions, has the PQHASH opcode (0x21), all classical precompiles are disabled, E2E transaction flow works, Solidity contracts are ready, and multi-node Docker is configured.
+All phases are complete. The PQ node starts in dev mode, mines blocks with PQ transactions, has the PQHASH opcode (0x21), all classical precompiles are disabled, E2E transaction flow works, Solidity contracts are ready, and multi-node Docker is configured with PoA consensus.
 
 ### What works end-to-end:
 - ML-DSA-65 key generation → SHAKE-256 address derivation
@@ -10,7 +10,8 @@ All phases are complete. The PQ node starts in dev mode, mines blocks with PQ tr
 - RLP encoding with PQ_TX_TYPE=0x50 → broadcast → pool → block inclusion → state change
 - Wallet CLI: new, address, balance, send, deploy, receipt, sign
 - Solidity contracts: PQVerify, PQHash, PQMultiSig, PQAccessControl
-- Docker multi-node setup (1 producer + 2 followers)
+- PoA consensus: round-robin validators with ML-DSA-65 block sealing
+- Docker multi-validator setup (3 PoA validators, round-robin rotation)
 
 ---
 
@@ -150,12 +151,16 @@ All phases are complete. The PQ node starts in dev mode, mines blocks with PQ tr
   - Not blocking; would be needed for production deployment
 
 - [x] **Consensus strategy for the demo** — DONE
-  - Uses reth `--dev` mode (auto-mine, no external CL)
-  - 1 producer node + 2 followers syncing via P2P
+  - PoA consensus with round-robin ML-DSA-65 block sealing
+  - `reth-pq-poa` crate: ValidatorSet, Sealer, PoaEngine, PoaMiningStream
+  - Integrates via `MiningMode::Trigger` — only mines on validator's turn
+  - Falls back to `--dev` auto-mine when no PoA config provided
 
 - [x] **Multi-node Docker Compose** — DONE
-  - `docker-compose.yml` with 3 nodes (1 producer + 2 followers)
-  - Bridge network, persistent volumes, port mapping
+  - `docker-compose.yml` with 3 PoA validators (round-robin rotation)
+  - Each validator has its own ML-DSA-65 key and PQ_POA_CONFIG
+  - Bridge network, persistent volumes, healthchecks
+  - `scripts/generate-validator-keys.sh` for key generation
 
 - [x] **Ports exposed per node** — DONE
   - 30303 TCP+UDP (P2P), 8545 TCP (HTTP RPC), 8546 TCP (WebSocket)
@@ -257,8 +262,13 @@ All phases are complete. The PQ node starts in dev mode, mines blocks with PQ tr
 - [x] **Wallet CLI: deploy + receipt commands**
 - [x] **Solidity contracts: PQVerify, PQHash, PQMultiSig, PQAccessControl**
 - [x] **ML-DSA precompile output upgraded to 32 bytes (ABI-compatible uint256)**
-- [x] **Multi-node Docker Compose (3 nodes: 1 producer + 2 followers)**
+- [x] **Multi-node Docker Compose (3 PoA validators, round-robin rotation)**
 - [x] **Automated demo script (scripts/demo.sh)**
+- [x] **PoA consensus engine (`reth-pq-poa`) — ML-DSA-65 block sealing**
+- [x] **PoA integration: PoaMiningStream + MiningMode::Trigger in main.rs**
+- [x] **Gas cost analysis paper (docs/GAS_COST_ANALYSIS.md)**
+- [x] **Benchmark visualization notebook (docs/benchmark_analysis.ipynb)**
+- [x] **Consensus documentation (docs/CONSENSUS.md) — PoS analysis + PoA justification**
 
 ---
 
