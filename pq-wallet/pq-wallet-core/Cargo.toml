@@ -8,6 +8,7 @@ description = "Core library for the post-quantum wallet — keygen, keystore, si
 [dependencies]
 dilithium = { workspace = true }
 alloy-primitives = { workspace = true }
+alloy-rlp = { version = "0.3", features = ["derive"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

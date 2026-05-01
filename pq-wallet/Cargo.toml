@@ -19,7 +19,7 @@ pq-wallet-core = { path = "pq-wallet-core" }
 dilithium = { path = "../ml-lattice-rs/dilithium" }
 
 # Alloy / Ethereum types
-alloy-primitives = { version = "1.5", features = ["serde"] }
+alloy-primitives = { version = "1.5", features = ["serde", "rlp"] }
 
 # Serialisation
 serde = { version = "1", features = ["derive"] }
