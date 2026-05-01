@@ -2,7 +2,7 @@
 
 use alloy_primitives::{Address, B256};
 use serde::{Deserialize, Serialize};
-use sha3::{Digest, Keccak256};
+use sha3::{Shake256, digest::{ExtendableOutput, Update, XofReader}};
 
 /// EIP-2718 transaction type for PQ transactions.
 pub const PQ_TX_TYPE: u8 = 0x04;
@@ -24,24 +24,28 @@ pub struct PqTxRequest {
 }
 
 impl PqTxRequest {
-    /// Canonical signing hash: `keccak256(0x04 || chain_id || nonce || ...)`.
+    /// Canonical signing hash: `shake256(0x04 || chain_id || nonce || ..., 32)`.
+    ///
+    /// Uses SHAKE-256 (XOF) for quantum-safe hashing, aligned with ML-DSA-65.
     pub fn signing_hash(&self) -> B256 {
-        let mut h = Keccak256::new();
-        h.update([PQ_TX_TYPE]);
-        h.update(self.chain_id.to_be_bytes());
-        h.update(self.nonce.to_be_bytes());
-        h.update(self.gas_price.to_be_bytes());
-        h.update(self.gas_limit.to_be_bytes());
+        let mut h = Shake256::default();
+        h.update(&[PQ_TX_TYPE]);
+        h.update(&self.chain_id.to_be_bytes());
+        h.update(&self.nonce.to_be_bytes());
+        h.update(&self.gas_price.to_be_bytes());
+        h.update(&self.gas_limit.to_be_bytes());
         match &self.to {
             Some(addr) => {
-                h.update([1u8]);
+                h.update(&[1u8]);
                 h.update(addr.as_slice());
             }
-            None => h.update([0u8]),
+            None => h.update(&[0u8]),
         }
-        h.update(self.value.to_be_bytes());
+        h.update(&self.value.to_be_bytes());
         h.update(&self.input);
-        B256::from_slice(&h.finalize())
+        let mut hash = [0u8; 32];
+        h.finalize_xof().read(&mut hash);
+        B256::from(hash)
     }
 }
 
@@ -81,11 +85,13 @@ impl PqSignedTx {
     }
 
     fn compute_hash(tx: &PqTxRequest, sig: &[u8], pk: &[u8]) -> B256 {
-        let mut h = Keccak256::new();
-        h.update([PQ_TX_TYPE]);
+        let mut h = Shake256::default();
+        h.update(&[PQ_TX_TYPE]);
         h.update(tx.signing_hash().as_slice());
         h.update(sig);
         h.update(pk);
-        B256::from_slice(&h.finalize())
+        let mut hash = [0u8; 32];
+        h.finalize_xof().read(&mut hash);
+        B256::from(hash)
     }
 }

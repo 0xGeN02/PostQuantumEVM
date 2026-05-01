@@ -2,7 +2,7 @@
 
 use alloy_primitives::Address;
 use dilithium::{signature::Keypair, EncodedVerifyingKey, MlDsa65, SigningKey, VerifyingKey};
-use sha3::{Digest, Keccak256};
+use sha3::{Shake256, digest::{ExtendableOutput, Update, XofReader}};
 
 use crate::error::WalletError;
 
@@ -54,10 +54,15 @@ impl PqKeypair {
         self.sk.verifying_key().encode().as_slice().to_vec()
     }
 
-    /// Derive the Ethereum address: `keccak256(pk_bytes)[12..]`.
+    /// Derive the Ethereum address: `shake256(pk_bytes, 32)[12..]`.
+    ///
+    /// Uses SHAKE-256 (XOF) aligned with ML-DSA-65 which uses SHAKE-256 internally.
     pub fn address(&self) -> Address {
         let pk_bytes = self.public_key_bytes();
-        let hash = Keccak256::digest(&pk_bytes);
+        let mut hasher = Shake256::default();
+        hasher.update(&pk_bytes);
+        let mut hash = [0u8; 32];
+        hasher.finalize_xof().read(&mut hash);
         Address::from_slice(&hash[12..])
     }
 
@@ -81,7 +86,12 @@ pub fn verifying_key_from_bytes(bytes: &[u8]) -> Result<VerifyingKey<MlDsa65>, W
 }
 
 /// Derive an Ethereum address from raw verifying-key bytes.
+///
+/// Uses SHAKE-256: `Address = shake256(pk_bytes, 32)[12..]`.
 pub fn address_from_pk_bytes(pk_bytes: &[u8]) -> Address {
-    let hash = Keccak256::digest(pk_bytes);
+    let mut hasher = Shake256::default();
+    hasher.update(pk_bytes);
+    let mut hash = [0u8; 32];
+    hasher.finalize_xof().read(&mut hash);
     Address::from_slice(&hash[12..])
 }
