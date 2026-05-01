@@ -51,7 +51,14 @@
     "rust-analyzer.cargo.target": null,
     
     "rust-analyzer.rustc.source": "discover",
-    
+
+    "rust-analyzer.linkedProjects": [
+        "Cargo.toml",
+        "pq-reth/Cargo.toml",
+        "pq-wallet/Cargo.toml",
+        "ml-lattice-rs/Cargo.toml"
+    ],
+
     // Configuración de colores y tema (opcional)
     "workbench.colorCustomizations": {
         "rust_analyzer.inlayHints": "#484848",
