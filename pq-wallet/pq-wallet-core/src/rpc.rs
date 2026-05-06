@@ -7,6 +7,7 @@
 //! - `eth_getTransactionReceipt`
 //! - `eth_chainId`
 //! - `eth_gasPrice`
+//! - `eth_call`
 
 use alloy_primitives::Address;
 use serde::{Deserialize, Serialize};
@@ -101,6 +102,38 @@ impl RpcClient {
         let receipt: TxReceipt = serde_json::from_value(result)
             .map_err(|e| WalletError::RpcParse(format!("receipt parse error: {e}")))?;
         Ok(Some(receipt))
+    }
+
+    /// Execute a read-only contract call (`eth_call`).
+    ///
+    /// This does not create a transaction — it simulates execution against
+    /// the latest state and returns the raw output bytes (hex-encoded).
+    ///
+    /// # Arguments
+    ///
+    /// * `from` - Optional sender address (for msg.sender context)
+    /// * `to` - Contract address to call
+    /// * `data` - ABI-encoded function call data (hex with 0x prefix)
+    pub async fn eth_call(
+        &self,
+        from: Option<&str>,
+        to: &str,
+        data: &str,
+    ) -> Result<String, WalletError> {
+        let mut call_obj = json!({
+            "to": to,
+            "data": data,
+        });
+
+        if let Some(from_addr) = from {
+            call_obj["from"] = json!(from_addr);
+        }
+
+        let result = self.call("eth_call", json!([call_obj, "latest"])).await?;
+        result
+            .as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| WalletError::RpcParse("expected hex string from eth_call".into()))
     }
 
     // ── Internal ──────────────────────────────────────────────────────────────

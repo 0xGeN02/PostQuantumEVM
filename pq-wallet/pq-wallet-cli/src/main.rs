@@ -157,6 +157,26 @@ enum Command {
         #[arg(long, default_value = "30")]
         timeout: u64,
     },
+
+    /// Execute a read-only contract call (eth_call). No signing required.
+    Call {
+        /// Contract address to call (hex, 0x-prefixed).
+        #[arg(long)]
+        to: String,
+
+        /// ABI-encoded function call data (hex, 0x-prefixed).
+        /// Example: 0x70a08231000000000000000000000000<address> for balanceOf(address)
+        #[arg(long)]
+        data: String,
+
+        /// Optional sender address (for msg.sender context).
+        #[arg(long)]
+        from: Option<String>,
+
+        /// JSON-RPC endpoint URL.
+        #[arg(short, long, default_value = "http://localhost:8545")]
+        rpc: String,
+    },
 }
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
@@ -177,6 +197,7 @@ async fn main() -> Result<()> {
         }
         Command::Receipt { tx_hash, rpc, timeout } => cmd_receipt(tx_hash, rpc, timeout).await,
         Command::Sign { keystore, passphrase, message } => cmd_sign(keystore, passphrase, message),
+        Command::Call { to, data, from, rpc } => cmd_call(to, data, from, rpc).await,
     }
 }
 
@@ -394,6 +415,22 @@ async fn cmd_receipt(tx_hash: String, rpc: String, timeout: u64) -> Result<()> {
             }
         }
     }
+}
+
+async fn cmd_call(to: String, data: String, from: Option<String>, rpc: String) -> Result<()> {
+    let client = RpcClient::new(&rpc);
+
+    let to_addr = format!("0x{}", to.strip_prefix("0x").unwrap_or(&to));
+    let call_data = format!("0x{}", data.strip_prefix("0x").unwrap_or(&data));
+    let from_addr = from.map(|f| format!("0x{}", f.strip_prefix("0x").unwrap_or(&f)));
+
+    let result = client
+        .eth_call(from_addr.as_deref(), &to_addr, &call_data)
+        .await
+        .context("eth_call failed")?;
+
+    println!("{result}");
+    Ok(())
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
