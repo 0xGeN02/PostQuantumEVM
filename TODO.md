@@ -178,8 +178,8 @@ All phases are complete. The PQ node starts in dev mode, mines blocks with PQ tr
   - `receipt` — query tx receipt by hash
   - `sign` — sign arbitrary message
 
-- [ ] **Additional commands** (nice-to-have)
-  - `call` — `eth_call` read-only for contract view functions
+- [x] **Additional commands** — PARTIAL
+  - `call` — `eth_call` read-only for contract view functions ✅
   - `block` — show current block or by number
   - `nonce` — query nonce directly
   - `status` — combined node info (chain_id, block number, gas price, peers)
@@ -192,8 +192,8 @@ All phases are complete. The PQ node starts in dev mode, mines blocks with PQ tr
   - `eth_getTransactionReceipt`
   - `eth_gasPrice`
 
-- [ ] **Additional RPC methods** (nice-to-have)
-  - `eth_call` (contract reads)
+- [x] **Additional RPC methods** — PARTIAL
+  - `eth_call` (contract reads) ✅
   - `eth_getBlockByNumber` / `eth_blockNumber`
   - `eth_getCode` (check if address is a contract)
   - `eth_estimateGas`
@@ -207,10 +207,10 @@ All phases are complete. The PQ node starts in dev mode, mines blocks with PQ tr
 
 ## Important (Required for production)
 
-- [ ] **Pool Validator with real state**
-  - `PqPoolValidator` uses `balance = U256::MAX` as a placeholder
-  - Needs to query actual state (nonce, balance) to prevent double-spending
-  - Without this, no protection against replay/spam
+- [x] **Pool Validator with real state** — DONE
+  - `PqPoolValidator<Client>` now queries `StateProviderFactory` for nonce/balance
+  - Rejects replay (nonce too low) and overdraft (insufficient balance)
+  - Generic over any `StateProviderFactory` client
 
 - [ ] **Integration / E2E tests**
   - Only ~17 unit tests exist in the PQ crates
@@ -269,6 +269,9 @@ All phases are complete. The PQ node starts in dev mode, mines blocks with PQ tr
 - [x] **Gas cost analysis paper (docs/GAS_COST_ANALYSIS.md)**
 - [x] **Benchmark visualization notebook (docs/benchmark_analysis.ipynb)**
 - [x] **Consensus documentation (docs/CONSENSUS.md) — PoS analysis + PoA justification**
+- [x] **Pool validator with real state (nonce + balance checks via StateProviderFactory)**
+- [x] **PoA seal verification (PqPoaConsensus wraps inner consensus, verifies ML-DSA-65 seals)**
+- [x] **Wallet eth_call + CLI call command (read-only contract calls)**
 
 ---
 
