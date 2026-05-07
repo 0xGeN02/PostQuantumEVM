@@ -205,7 +205,7 @@ impl App {
         let addr_lower = format!("{addr:?}").to_lowercase();
 
         let end_block = self.block_number;
-        let start_block = end_block.saturating_sub(50); // last 50 blocks
+        let start_block = end_block.saturating_sub(200); // last 200 blocks
 
         let mut txs = Vec::new();
 
