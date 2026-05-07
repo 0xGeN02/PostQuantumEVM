@@ -125,9 +125,13 @@ fn draw_wallet_tab(f: &mut Frame, app: &App, area: Rect) {
         .block(Block::default().borders(Borders::ALL).title(" Balance "));
     f.render_widget(balance, chunks[1]);
 
-    // ─── Key Size Comparison ───
+    // ─── Key Size Comparison + Hash Display ───
+    let keccak_hash = app.keccak256_hash.as_deref().unwrap_or("N/A");
+    let shake_hash = app.shake256_hash.as_deref().unwrap_or("N/A");
+    let addr_keccak = app.addr_keccak256.as_deref().unwrap_or("N/A");
+    let addr_shake = app.addr_shake256.as_deref().unwrap_or("N/A");
+
     let comparison = vec![
-        Line::from(""),
         Line::from(Span::styled(
             "  Classical (ECDSA/secp256k1) vs Post-Quantum (ML-DSA-65)",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
@@ -167,6 +171,36 @@ fn draw_wallet_tab(f: &mut Frame, app: &App, area: Rect) {
             Span::styled("  Quantum-safe     ", Style::default().fg(Color::DarkGray)),
             Span::styled("NO             ", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
             Span::styled("YES", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  ─── Hash of YOUR public key (1952 bytes) ───",
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  keccak256(pk): ", Style::default().fg(Color::Red)),
+            Span::styled(keccak_hash, Style::default().fg(Color::White)),
+        ]),
+        Line::from(vec![
+            Span::styled("  shake256(pk):  ", Style::default().fg(Color::Green)),
+            Span::styled(shake_hash, Style::default().fg(Color::White)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "  ─── Derived addresses (last 20 bytes of hash) ───",
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  Classical:  ", Style::default().fg(Color::Red)),
+            Span::styled(addr_keccak, Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+            Span::styled("  ← would be if Ethereum", Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(vec![
+            Span::styled("  PQ (ours):  ", Style::default().fg(Color::Green)),
+            Span::styled(addr_shake, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            Span::styled("  ← actual address", Style::default().fg(Color::DarkGray)),
         ]),
     ];
 

@@ -2116,6 +2116,8 @@ dependencies = [
  "pq-wallet-core",
  "ratatui",
  "serde_json",
+ "sha3 0.11.0",
+ "tiny-keccak",
  "tokio",
 ]
 
@@ -2969,6 +2971,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "tiny-keccak"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c9d3793400a45f954c52e73d068316d76b6f4e36977e3fcebb13a2721e80237"
+dependencies = [
+ "crunchy",
 ]
 
 [[package]]

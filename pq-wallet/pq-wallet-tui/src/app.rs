@@ -2,6 +2,8 @@
 
 use alloy_primitives::Address;
 use pq_wallet_core::RpcClient;
+use sha3::{Shake256, digest::{Update, ExtendableOutput, XofReader}};
+use tiny_keccak::{Hasher, Keccak};
 
 /// Active tab in the TUI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,6 +74,16 @@ pub struct App {
     pub pk_size: usize,
     pub sig_size: usize,
 
+    // ─── Hash comparison (computed from public key) ───
+    /// Full SHAKE-256 hash of the public key (32 bytes, hex).
+    pub shake256_hash: Option<String>,
+    /// Full keccak256 hash of the public key (32 bytes, hex).
+    pub keccak256_hash: Option<String>,
+    /// Address derived via SHAKE-256 (our PQ method).
+    pub addr_shake256: Option<String>,
+    /// Address that would be derived via keccak256 (classical method).
+    pub addr_keccak256: Option<String>,
+
     // ─── Balance ───
     pub balance_wei: u128,
 
@@ -102,6 +114,11 @@ impl App {
             algorithm: "ML-DSA-65 (CRYSTALS-Dilithium)",
             pk_size: 1952,
             sig_size: 3309,
+
+            shake256_hash: None,
+            keccak256_hash: None,
+            addr_shake256: None,
+            addr_keccak256: None,
 
             balance_wei: 0,
 
@@ -221,14 +238,36 @@ impl App {
 
     /// Load wallet address from keystore (no passphrase needed).
     pub fn load_keystore(&mut self) {
-        if let Ok(addr_str) =
-            pq_wallet_core::Keystore::address_from_file(std::path::Path::new(&self.keystore_path))
-        {
-            let addr_str = addr_str.strip_prefix("0x").unwrap_or(&addr_str);
-            if let Ok(bytes) = hex::decode(addr_str) {
+        let path = std::path::Path::new(&self.keystore_path);
+
+        // Load address
+        if let Ok(addr_str) = pq_wallet_core::Keystore::address_from_file(path) {
+            let clean = addr_str.strip_prefix("0x").unwrap_or(&addr_str);
+            if let Ok(bytes) = hex::decode(clean) {
                 if bytes.len() == 20 {
                     self.address = Some(Address::from_slice(&bytes));
                 }
+            }
+        }
+
+        // Load public key and compute hashes
+        if let Ok(pk_hex) = pq_wallet_core::Keystore::public_key_from_file(path) {
+            if let Ok(pk_bytes) = hex::decode(&pk_hex) {
+                // SHAKE-256 (our PQ method)
+                let mut shake = Shake256::default();
+                shake.update(&pk_bytes);
+                let mut shake_out = [0u8; 32];
+                shake.finalize_xof().read(&mut shake_out);
+                self.shake256_hash = Some(format!("0x{}", hex::encode(shake_out)));
+                self.addr_shake256 = Some(format!("0x{}", hex::encode(&shake_out[12..])));
+
+                // keccak256 (classical Ethereum method)
+                let mut keccak = Keccak::v256();
+                keccak.update(&pk_bytes);
+                let mut keccak_out = [0u8; 32];
+                keccak.finalize(&mut keccak_out);
+                self.keccak256_hash = Some(format!("0x{}", hex::encode(keccak_out)));
+                self.addr_keccak256 = Some(format!("0x{}", hex::encode(&keccak_out[12..])));
             }
         }
     }

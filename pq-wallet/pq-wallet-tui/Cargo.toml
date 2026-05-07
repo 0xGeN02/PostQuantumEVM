@@ -24,3 +24,7 @@ alloy-primitives = { workspace = true }
 serde_json = { workspace = true }
 hex = { workspace = true }
 anyhow = { workspace = true }
+
+# Hashing (for comparison display)
+sha3 = "0.11"
+tiny-keccak = { version = "2", features = ["keccak"] }

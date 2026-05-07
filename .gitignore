@@ -10,3 +10,7 @@ logs/
 
 __pycache__/
 *.pyc
+
+# Keystores (sensitive credentials)
+keystore.json
+*.keystore
