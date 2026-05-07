@@ -2,6 +2,7 @@
 members = [
     "pq-wallet-core",
     "pq-wallet-cli",
+    "pq-wallet-tui",
 ]
 resolver = "2"
 

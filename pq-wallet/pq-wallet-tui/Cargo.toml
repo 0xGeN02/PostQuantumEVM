@@ -1,0 +1,26 @@
+[package]
+name = "pq-wallet-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "pq-tui"
+path = "src/main.rs"
+
+[dependencies]
+# Internal
+pq-wallet-core = { path = "../pq-wallet-core" }
+
+# TUI framework
+ratatui = "0.29"
+crossterm = { version = "0.28", features = ["event-stream"] }
+
+# Async
+tokio = { workspace = true }
+
+# Data
+alloy-primitives = { workspace = true }
+serde_json = { workspace = true }
+hex = { workspace = true }
+anyhow = { workspace = true }

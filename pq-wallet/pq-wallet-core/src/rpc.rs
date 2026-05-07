@@ -136,6 +136,24 @@ impl RpcClient {
             .ok_or_else(|| WalletError::RpcParse("expected hex string from eth_call".into()))
     }
 
+    /// Get the current block number.
+    pub async fn block_number(&self) -> Result<u64, WalletError> {
+        let result = self.call("eth_blockNumber", json!([])).await?;
+        parse_hex_u64(&result)
+    }
+
+    /// Get a block by number (with full transaction objects).
+    ///
+    /// Returns the raw JSON value of the block, or None if not found.
+    pub async fn get_block_by_number(&self, block: u64) -> Result<Option<Value>, WalletError> {
+        let block_hex = format!("0x{block:x}");
+        let result = self.call("eth_getBlockByNumber", json!([block_hex, true])).await?;
+        if result.is_null() {
+            return Ok(None);
+        }
+        Ok(Some(result))
+    }
+
     // ── Internal ──────────────────────────────────────────────────────────────
 
     async fn call(&self, method: &str, params: Value) -> Result<Value, WalletError> {
