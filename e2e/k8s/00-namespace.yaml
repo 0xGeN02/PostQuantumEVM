@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pqevm
+  labels:
+    app.kubernetes.io/name: postquantumevm
+    app.kubernetes.io/part-of: pqevm

@@ -1,0 +1,84 @@
+# Headless service for inter-validator discovery (P2P)
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-validators-headless
+  namespace: pqevm
+  labels:
+    app.kubernetes.io/name: postquantumevm
+    app.kubernetes.io/component: validator
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/component: validator
+  ports:
+    - name: p2p-tcp
+      port: 30303
+      targetPort: 30303
+      protocol: TCP
+    - name: p2p-udp
+      port: 30303
+      targetPort: 30303
+      protocol: UDP
+---
+# External RPC service (LoadBalancer or NodePort)
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-rpc
+  namespace: pqevm
+  labels:
+    app.kubernetes.io/name: postquantumevm
+    app.kubernetes.io/component: rpc
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/component: validator
+  ports:
+    - name: http-rpc
+      port: 8545
+      targetPort: 8545
+      protocol: TCP
+---
+# Per-validator services (for targeted RPC access in E2E tests)
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-validator-1
+  namespace: pqevm
+spec:
+  selector:
+    app.kubernetes.io/component: validator
+    statefulset.kubernetes.io/pod-name: pq-validator-0
+  ports:
+    - name: http-rpc
+      port: 8545
+      targetPort: 8545
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-validator-2
+  namespace: pqevm
+spec:
+  selector:
+    app.kubernetes.io/component: validator
+    statefulset.kubernetes.io/pod-name: pq-validator-1
+  ports:
+    - name: http-rpc
+      port: 8545
+      targetPort: 8545
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pq-validator-3
+  namespace: pqevm
+spec:
+  selector:
+    app.kubernetes.io/component: validator
+    statefulset.kubernetes.io/pod-name: pq-validator-2
+  ports:
+    - name: http-rpc
+      port: 8545
+      targetPort: 8545

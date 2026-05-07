@@ -1,0 +1,76 @@
+# PoA Config ConfigMap — one per validator
+# NOTE: In production, generate real keys with ./scripts/generate-validator-keys.sh
+# and replace the placeholder public keys below.
+#
+# To create from generated files:
+#   kubectl create configmap pqevm-poa-configs -n pqevm \
+#     --from-file=poa-config-1.json=scripts/validator-keys/poa-config-1.json \
+#     --from-file=poa-config-2.json=scripts/validator-keys/poa-config-2.json \
+#     --from-file=poa-config-3.json=scripts/validator-keys/poa-config-3.json
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pqevm-poa-configs
+  namespace: pqevm
+  labels:
+    app.kubernetes.io/name: postquantumevm
+data:
+  # Placeholder configs — replace with real validator keys before deploying!
+  poa-config-1.json: |
+    {
+      "slot_time_ms": 5000,
+      "local_address": "0x1000000000000000000000000000000000000001",
+      "validators": [
+        {
+          "address": "0x1000000000000000000000000000000000000001",
+          "public_key": "0x_VALIDATOR_1_ML_DSA_65_PUBLIC_KEY_HEX_"
+        },
+        {
+          "address": "0x1000000000000000000000000000000000000002",
+          "public_key": "0x_VALIDATOR_2_ML_DSA_65_PUBLIC_KEY_HEX_"
+        },
+        {
+          "address": "0x1000000000000000000000000000000000000003",
+          "public_key": "0x_VALIDATOR_3_ML_DSA_65_PUBLIC_KEY_HEX_"
+        }
+      ]
+    }
+  poa-config-2.json: |
+    {
+      "slot_time_ms": 5000,
+      "local_address": "0x1000000000000000000000000000000000000002",
+      "validators": [
+        {
+          "address": "0x1000000000000000000000000000000000000001",
+          "public_key": "0x_VALIDATOR_1_ML_DSA_65_PUBLIC_KEY_HEX_"
+        },
+        {
+          "address": "0x1000000000000000000000000000000000000002",
+          "public_key": "0x_VALIDATOR_2_ML_DSA_65_PUBLIC_KEY_HEX_"
+        },
+        {
+          "address": "0x1000000000000000000000000000000000000003",
+          "public_key": "0x_VALIDATOR_3_ML_DSA_65_PUBLIC_KEY_HEX_"
+        }
+      ]
+    }
+  poa-config-3.json: |
+    {
+      "slot_time_ms": 5000,
+      "local_address": "0x1000000000000000000000000000000000000003",
+      "validators": [
+        {
+          "address": "0x1000000000000000000000000000000000000001",
+          "public_key": "0x_VALIDATOR_1_ML_DSA_65_PUBLIC_KEY_HEX_"
+        },
+        {
+          "address": "0x1000000000000000000000000000000000000002",
+          "public_key": "0x_VALIDATOR_2_ML_DSA_65_PUBLIC_KEY_HEX_"
+        },
+        {
+          "address": "0x1000000000000000000000000000000000000003",
+          "public_key": "0x_VALIDATOR_3_ML_DSA_65_PUBLIC_KEY_HEX_"
+        }
+      ]
+    }
