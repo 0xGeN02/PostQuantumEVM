@@ -5,9 +5,9 @@
 //! - RLP encoding/decoding time
 //! - Overall transaction processing overhead
 
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use alloy_primitives::{Address, U256};
-use alloy_rlp::{Encodable, RlpEncodable};
+use alloy_rlp::{Encodable, MaxEncodedLenAssoc, RlpEncodable};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 // ─── PQ Transaction (ML-DSA-65) ──────────────────────────────────────────────
 
@@ -20,8 +20,8 @@ struct PqTxRlpFields {
     to: alloy_rlp::Bytes,
     value: U256,
     input: alloy_rlp::Bytes,
-    signature: alloy_rlp::Bytes,   // 3309 bytes for ML-DSA-65
-    public_key: alloy_rlp::Bytes,  // 1952 bytes for ML-DSA-65
+    signature: alloy_rlp::Bytes,  // 3309 bytes for ML-DSA-65
+    public_key: alloy_rlp::Bytes, // 1952 bytes for ML-DSA-65
 }
 
 // ─── Classical Transaction (ECDSA) ───────────────────────────────────────────
@@ -47,11 +47,11 @@ fn make_pq_tx() -> PqTxRlpFields {
         nonce: 42,
         gas_price: 1_000_000_000, // 1 gwei
         gas_limit: 21_000,
-        to: alloy_rlp::Bytes::copy_from_slice(&[0xab; 20]),
+        to: alloy_rlp::Bytes::copy_from_slice(&[0xABu8; 20][..Address::LEN]),
         value: U256::from(1_000_000_000_000_000_000u128), // 1 ETH
         input: alloy_rlp::Bytes::new(),
-        signature: alloy_rlp::Bytes::copy_from_slice(&vec![0xaa; 3309]),
-        public_key: alloy_rlp::Bytes::copy_from_slice(&vec![0xbb; 1952]),
+        signature: alloy_rlp::Bytes::copy_from_slice(&vec![0xAAu8; 3309]),
+        public_key: alloy_rlp::Bytes::copy_from_slice(&vec![0xBBu8; 1952]),
     }
 }
 
@@ -60,7 +60,7 @@ fn make_classical_tx() -> ClassicalTxRlpFields {
         nonce: 42,
         gas_price: 1_000_000_000,
         gas_limit: 21_000,
-        to: alloy_rlp::Bytes::copy_from_slice(&[0xab; 20]),
+        to: alloy_rlp::Bytes::copy_from_slice(&[0xABu8; 20][..Address::LEN]),
         value: U256::from(1_000_000_000_000_000_000u128),
         input: alloy_rlp::Bytes::new(),
         v: 28,
@@ -114,9 +114,18 @@ fn bench_tx_size(c: &mut Criterion) {
     // Print sizes (these will show up in criterion output)
     println!("\n=== Transaction Size Comparison ===");
     println!("PQ transaction (ML-DSA-65):   {} bytes", pq_buf.len());
-    println!("Classical transaction (ECDSA): {} bytes", classical_buf.len());
-    println!("Size ratio (PQ/Classical):     {:.1}x", pq_buf.len() as f64 / classical_buf.len() as f64);
-    println!("Overhead:                      +{} bytes", pq_buf.len() - classical_buf.len());
+    println!(
+        "Classical transaction (ECDSA): {} bytes",
+        classical_buf.len()
+    );
+    println!(
+        "Size ratio (PQ/Classical):     {:.1}x",
+        pq_buf.len() as f64 / classical_buf.len() as f64
+    );
+    println!(
+        "Overhead:                      +{} bytes",
+        pq_buf.len() - classical_buf.len()
+    );
     println!("===================================\n");
 
     group.bench_function("PQ tx encode (5.3KB)", |b| {
