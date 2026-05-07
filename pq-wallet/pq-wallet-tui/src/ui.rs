@@ -228,7 +228,7 @@ fn draw_transactions_tab(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let header_cells = ["Hash", "Block", "To", "Value (wei)", "Gas", "Type", "Status"]
+    let header_cells = ["Hash", "Block", "To", "Value", "Gas", "Type", "Status"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
     let header = Row::new(header_cells).height(1);
@@ -256,11 +256,14 @@ fn draw_transactions_tab(f: &mut Frame, app: &App, area: Rect) {
 
         let status_str = if tx.status == "0x1" { "OK" } else { "FAIL" };
 
+        // Convert hex value to human-readable qETH
+        let value_display = format_value_qeth(&tx.value_wei);
+
         Row::new(vec![
             Cell::from(hash_short),
             Cell::from(tx.block.clone()),
             Cell::from(to_short),
-            Cell::from(tx.value_wei.clone()),
+            Cell::from(value_display),
             Cell::from(tx.gas_used.clone()),
             Cell::from(tx.tx_type.clone()),
             Cell::from(status_str),
@@ -387,4 +390,26 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let bar = Paragraph::new(status)
         .block(Block::default().borders(Borders::ALL));
     f.render_widget(bar, area);
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Convert a hex wei value (e.g. "0xde0b6b3a7640000") to a human-readable string.
+/// Shows qETH if >= 0.001, otherwise shows wei.
+fn format_value_qeth(hex_val: &str) -> String {
+    let s = hex_val.strip_prefix("0x").unwrap_or(hex_val);
+    let wei = u128::from_str_radix(s, 16).unwrap_or(0);
+
+    if wei == 0 {
+        return "0 qETH".to_string();
+    }
+
+    let qeth = wei as f64 / 1e18;
+    if qeth >= 0.001 {
+        format!("{qeth:.6} qETH")
+    } else {
+        // Show in Gwei for small amounts
+        let gwei = wei as f64 / 1e9;
+        format!("{gwei:.2} Gwei")
+    }
 }
