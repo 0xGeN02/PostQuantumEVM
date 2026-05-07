@@ -57,7 +57,7 @@ mod ecdsa_secp256k1 {
         (sk, pk)
     }
 
-    pub fn sign(sk: &SecretKey, msg_hash: &[u8; 32]) -> secp256k1::ecdsa::RecoverableSignature {
+    pub fn sign(sk: &SecretKey, msg_hash: &[u8]) -> secp256k1::ecdsa::RecoverableSignature {
         let secp = Secp256k1::new();
         let msg = Message::from_digest_slice(msg_hash).unwrap();
         secp.sign_ecdsa_recoverable(&msg, sk)
@@ -65,7 +65,7 @@ mod ecdsa_secp256k1 {
 
     pub fn verify(
         pk: &secp256k1::PublicKey,
-        msg_hash: &[u8; 32],
+        msg_hash: &[u8],
         sig: &secp256k1::ecdsa::Signature,
     ) -> bool {
         let secp = Secp256k1::new();
@@ -74,7 +74,7 @@ mod ecdsa_secp256k1 {
     }
 
     pub fn recover(
-        msg_hash: &[u8; 32],
+        msg_hash: &[u8],
         sig: &secp256k1::ecdsa::RecoverableSignature,
     ) -> secp256k1::PublicKey {
         let secp = Secp256k1::new();
