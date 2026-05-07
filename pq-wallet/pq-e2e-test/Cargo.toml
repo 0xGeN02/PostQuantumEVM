@@ -1,0 +1,35 @@
+[package]
+name = "pq-e2e-test"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "pq-e2e"
+path = "src/main.rs"
+
+[dependencies]
+# Internal
+pq-wallet-core.workspace = true
+
+# Async
+tokio.workspace = true
+
+# Serialisation
+serde.workspace = true
+serde_json.workspace = true
+
+# Hex
+hex.workspace = true
+
+# Ethereum types
+alloy-primitives.workspace = true
+
+# Error handling
+anyhow.workspace = true
+
+# HTTP client
+reqwest.workspace = true
+
+# CLI
+clap.workspace = true
