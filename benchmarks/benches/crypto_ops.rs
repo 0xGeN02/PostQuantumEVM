@@ -6,7 +6,7 @@
 //! - Signature verification (verify)
 //! - SHAKE-256 vs Keccak-256 hashing at various input sizes
 
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand::RngCore;
 
 // ─── ML-DSA-65 benchmarks ────────────────────────────────────────────────────
@@ -19,7 +19,10 @@ mod mldsa {
         dilithium65::keygen()
     }
 
-    pub fn sign(sk: &dilithium::SigningKey<dilithium::MlDsa65>, msg: &[u8]) -> dilithium::Signature<dilithium::MlDsa65> {
+    pub fn sign(
+        sk: &dilithium::SigningKey<dilithium::MlDsa65>,
+        msg: &[u8],
+    ) -> dilithium::Signature<dilithium::MlDsa65> {
         dilithium65::sign(sk, msg)
     }
 
@@ -31,7 +34,9 @@ mod mldsa {
         dilithium65::verify(pk, msg, sig).is_ok()
     }
 
-    pub fn get_vk(sk: &dilithium::SigningKey<dilithium::MlDsa65>) -> dilithium::VerifyingKey<dilithium::MlDsa65> {
+    pub fn get_vk(
+        sk: &dilithium::SigningKey<dilithium::MlDsa65>,
+    ) -> dilithium::VerifyingKey<dilithium::MlDsa65> {
         sk.verifying_key().clone()
     }
 
@@ -58,13 +63,20 @@ mod ecdsa_secp256k1 {
         secp.sign_ecdsa_recoverable(&msg, sk)
     }
 
-    pub fn verify(pk: &secp256k1::PublicKey, msg_hash: &[u8; 32], sig: &secp256k1::ecdsa::Signature) -> bool {
+    pub fn verify(
+        pk: &secp256k1::PublicKey,
+        msg_hash: &[u8; 32],
+        sig: &secp256k1::ecdsa::Signature,
+    ) -> bool {
         let secp = Secp256k1::new();
         let msg = Message::from_digest_slice(msg_hash).unwrap();
         secp.verify_ecdsa(&msg, sig, pk).is_ok()
     }
 
-    pub fn recover(msg_hash: &[u8; 32], sig: &secp256k1::ecdsa::RecoverableSignature) -> secp256k1::PublicKey {
+    pub fn recover(
+        msg_hash: &[u8; 32],
+        sig: &secp256k1::ecdsa::RecoverableSignature,
+    ) -> secp256k1::PublicKey {
         let secp = Secp256k1::new();
         let msg = Message::from_digest_slice(msg_hash).unwrap();
         secp.recover_ecdsa(&msg, sig).unwrap()
@@ -74,7 +86,10 @@ mod ecdsa_secp256k1 {
 // ─── Hash function benchmarks ────────────────────────────────────────────────
 
 mod hashes {
-    use sha3::{Shake256, digest::{ExtendableOutput, Update, XofReader}};
+    use sha3::{
+        digest::{ExtendableOutput, Update, XofReader},
+        Shake256,
+    };
     use tiny_keccak::{Hasher, Keccak};
 
     pub fn shake256(data: &[u8]) -> [u8; 32] {

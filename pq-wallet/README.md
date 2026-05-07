@@ -1,265 +1,207 @@
-# pq-wallet — Wallet Post-Cuántica para Ethereum
+# pq-wallet — Post-Quantum Wallet for PostQuantumEVM
 
-Wallet de línea de comandos (CLI) para interactuar con la red **PostQuantumEVM**.
-Genera claves ML-DSA-65 (CRYSTALS-Dilithium), las guarda cifradas en disco y
-construye, firma y emite transacciones de tipo `0x04`.
+Command-line wallet, terminal UI, and tooling for the **PostQuantumEVM** network.
+Generates ML-DSA-65 (CRYSTALS-Dilithium) keys, stores them encrypted on disk, and
+constructs, signs, and broadcasts transactions of type `0x50`.
 
-Las claves **nunca salen del dispositivo** sin estar cifradas. No hay servidor,
-no hay servicio en la nube.
+Keys **never leave the device** unencrypted. No server, no cloud service.
 
 ---
 
-## Estructura del proyecto
+## Project Structure
 
 ```
 pq-wallet/
-├── pq-wallet-core/         ← librería reutilizable
+├── pq-wallet-core/         # Reusable library
 │   └── src/
-│       ├── keygen.rs       ← generación de keypairs ML-DSA-65
-│       ├── keystore.rs     ← cifrado/descifrado de keystore en disco
-│       ├── signer.rs       ← firma de transacciones
-│       ├── tx.rs           ← tipos PqTxRequest / PqSignedTx
-│       ├── rpc.rs          ← cliente JSON-RPC mínimo
-│       └── error.rs        ← WalletError
-└── pq-wallet-cli/
-    └── src/main.rs         ← binario `pq-wallet`
+│       ├── keygen.rs       # ML-DSA-65 keypair generation
+│       ├── keystore.rs     # Encrypted keystore (AES-256-GCM + Argon2id)
+│       ├── signer.rs       # Transaction signing
+│       ├── tx.rs           # PqTxRequest / PqSignedTx types
+│       ├── rpc.rs          # Minimal JSON-RPC client
+│       └── error.rs        # WalletError
+├── pq-wallet-cli/          # CLI binary (pq-wallet)
+├── pq-wallet-tui/          # Terminal UI dashboard (pq-tui)
+├── pq-chain-seeder/        # Chain seeder for demos (pq-seed)
+└── pq-e2e-test/            # E2E validation framework (pq-e2e)
 ```
 
 ---
 
-## Instalación
+## Installation
 
 ```bash
 cd pq-wallet
-cargo build --release -p pq-wallet-cli
-# binario en: target/release/pq-wallet
+cargo build --release
+
+# Binaries:
+#   target/release/pq-wallet   (CLI)
+#   target/release/pq-tui      (TUI dashboard)
+#   target/release/pq-seed     (Chain seeder)
+#   target/release/pq-e2e      (E2E tests)
 ```
 
 ---
 
-## Comandos
+## CLI Commands (`pq-wallet`)
 
-### `new` — Generar keypair y guardar keystore
-
-```bash
-pq-wallet new --output mi-clave.json
-# Pedirá passphrase interactivamente (no se muestra al escribir)
-
-# O pasando la passphrase por flag (no recomendado en producción)
-pq-wallet new --output mi-clave.json --passphrase "mi-passphrase-segura"
-```
-
-Salida:
-```
-Generating ML-DSA-65 keypair... done.
-Keystore saved to:  mi-clave.json
-Address:            0x4a8b2c1d...
-
-WARNING: Anyone with your passphrase and keystore file can steal your funds.
-         Keep them separate and make a backup.
-```
-
----
-
-### `address` — Ver dirección sin necesitar passphrase
+### `new` — Generate keypair and save keystore
 
 ```bash
-pq-wallet address --keystore mi-clave.json
-# 0x4a8b2c1d...
+pq-wallet new --output keystore.json
+# Prompts for passphrase interactively
+
+pq-wallet new --output keystore.json --passphrase "my-secure-pass"
 ```
 
-La clave pública está almacenada sin cifrar en el keystore (es pública), por lo
-que la dirección se puede consultar sin introducir la passphrase.
-
----
-
-### `balance` — Consultar saldo
+### `address` — Show address (no passphrase needed)
 
 ```bash
-pq-wallet balance \
-    --keystore mi-clave.json \
-    --rpc http://localhost:8545
-
-# Address: 0x4a8b2c1d...
-# Balance: 1.234567 ETH (1234567000000000000 wei)
+pq-wallet address --keystore keystore.json
+# 0x0674683D469a021377196cf5a5D3a1F80Bcf7072
 ```
 
----
-
-### `send` — Construir, firmar y emitir transacción
+### `balance` — Query qETH balance
 
 ```bash
+pq-wallet balance --keystore keystore.json --rpc http://localhost:8545
+# Address: 0x0674683D469a...
+# Balance: 10000.0000 qETH
+```
+
+### `send` — Build, sign, and broadcast transaction
+
+```bash
+# Simple transfer
 pq-wallet send \
-    --keystore mi-clave.json \
-    --to 0xRecipientAddress \
+    --keystore keystore.json \
+    --to 0x1111111111111111111111111111111111111111 \
     --value 1000000000000000000 \
-    --gas-limit 21000 \
+    --rpc http://localhost:8545
+
+# Contract deployment (no --to, pass init code via --data)
+pq-wallet send \
+    --keystore keystore.json \
+    --data 0x608060405234... \
+    --gas-limit 200000 \
+    --rpc http://localhost:8545
+
+# Dry run (sign but don't broadcast)
+pq-wallet send --keystore keystore.json --to 0x... --value 0 --dry-run
+```
+
+### `call` — Read-only contract call
+
+```bash
+pq-wallet call \
+    --to 0x<contract-address> \
+    --data 0x2e64cec1 \
     --rpc http://localhost:8545
 ```
 
-El `chain_id`, `nonce` y `gas_price` se obtienen automáticamente del nodo. Se
-pueden sobreescribir:
+### `sign` — Sign arbitrary message
 
 ```bash
-pq-wallet send \
-    --keystore mi-clave.json \
-    --to 0xRecipientAddress \
-    --value 0 \
-    --gas-limit 100000 \
-    --gas-price 1000000000 \
-    --data 0xdeadbeef \
-    --rpc http://localhost:8545
-```
-
-#### Modo dry-run (sin emitir)
-
-```bash
-pq-wallet send \
-    --keystore mi-clave.json \
-    --to 0xRecipientAddress \
-    --gas-price 1000000000 \
-    --dry-run
-
-# Tx hash (local):  0xabc...
-# Chain ID:         1
-# Nonce:            0
-# Gas price:        1000000000 wei
-# Gas limit:        21000
-# To:               0xRecipientAddress
-# Value:            0 wei
-# Raw tx size:      5342 bytes
-# Raw tx hex:       0x04f9...
+pq-wallet sign --keystore keystore.json "Hello post-quantum world"
 ```
 
 ---
 
-### `sign` — Firmar mensaje arbitrario
+## TUI Dashboard (`pq-tui`)
 
 ```bash
-pq-wallet sign \
-    --keystore mi-clave.json \
-    "Hola mundo post-cuántico"
-
-# Message:   Hola mundo post-cuántico
-# Signer:    0x4a8b2c1d...
-# Signature: 3a8f1c... (6618 hex chars = 3309 bytes)
+cargo run --bin pq-tui
 ```
+
+Interactive terminal UI with 4 tabs:
+
+| Tab | Content |
+|-----|---------|
+| Wallet | Address, balance, PK size, sig size |
+| Transactions | Own transactions (hash, value, type) |
+| Blocks | Block explorer (number, hash, gas, txs) |
+| Network | Chain ID, block height, gas price |
+
+### Hotkeys
+
+| Key | Action |
+|-----|--------|
+| `s` | Send qETH (prompts for passphrase, recipient, amount) |
+| `d` | Deploy contract (prompts for passphrase, init code) |
+| `c` | Call contract (read-only, no passphrase) |
+| `r` | Refresh all data |
+| `q` | Quit |
+| `Tab` / arrows | Navigate tabs |
 
 ---
 
-## Formato del keystore
+## Chain Seeder (`pq-seed`)
 
-El keystore es un archivo JSON con el siguiente esquema:
+Pre-populates the chain with demo transactions for presentations:
+
+```bash
+cargo run --bin pq-seed -- \
+  --rpc http://localhost:8545 \
+  --keystore keystore.json \
+  --passphrase <pass> \
+  --transfers 10 \
+  --contract-calls 5
+```
+
+**What it does:**
+1. Sends N transfers (0.01–1.0 qETH) to demo addresses
+2. Deploys a SimpleStorage contract (hand-crafted EVM bytecode)
+3. Makes N `store(uint256)` calls to the contract
+4. Verifies the stored value via `eth_call`
+
+---
+
+## E2E Validation (`pq-e2e`)
+
+```bash
+cargo run --bin pq-e2e -- --rpc http://localhost:8545
+```
+
+Runs 12 test scenarios across 6 phases: chain identity, PoA consensus, EIP-1559 fees,
+PQ transactions, smart contracts, and multi-node consistency.
+
+---
+
+## Keystore Format
 
 ```json
 {
   "version": 1,
-  "address": "0x4a8b2c1d...",
-  "public_key": "<hex 3904 chars = 1952 bytes>",
+  "address": "0x0674683D469a...",
+  "public_key": "<hex 1952 bytes>",
   "crypto": {
     "kdf": "argon2id",
-    "kdf_params": {
-      "m_cost": 65536,
-      "t_cost": 3,
-      "p_cost": 4,
-      "salt": "<hex 32 bytes>"
-    },
+    "kdf_params": { "m_cost": 65536, "t_cost": 3, "p_cost": 4, "salt": "<hex>" },
     "cipher": "aes-256-gcm",
-    "cipher_params": {
-      "iv": "<hex 12 bytes>"
-    },
+    "cipher_params": { "iv": "<hex 12 bytes>" },
     "ciphertext": "<hex 64 bytes>"
   }
 }
 ```
 
-### Lo que se cifra
-
-Solo se cifran los **32 bytes de seed** del keypair ML-DSA-65 (no la clave
-completa expandida de 4032 bytes). Al cargar, el seed se usa para regenerar
-el keypair completo con `MlDsa65::from_seed(&seed)`.
-
-### Seguridad del cifrado
-
-| Capa | Algoritmo | Parámetros |
-|---|---|---|
-| Derivación de clave | Argon2id | m=64 MB, t=3 iteraciones, p=4 hilos |
-| Cifrado | AES-256-GCM | nonce aleatorio de 12 bytes, tag de 16 bytes |
-
-La dirección y la clave pública se guardan en claro (son datos públicos). Solo
-el seed es secreto.
+Only the **32-byte seed** is encrypted. The full signing key (4032 bytes) is
+deterministically derived from the seed on load via `MlDsa65::from_seed(&seed)`.
 
 ---
 
-## pq-wallet-core — API de librería
-
-Para integrar la funcionalidad en otro programa Rust:
-
-```rust
-use pq_wallet_core::{PqKeypair, Keystore, PqSigner};
-use pq_wallet_core::tx::PqTxRequest;
-
-// Generar keypair
-let keypair = PqKeypair::generate();
-println!("Address: {}", keypair.address());
-
-// Guardar en keystore cifrado
-keypair.save("/tmp/key.json", "mi-passphrase").unwrap();
-
-// Cargar desde disco
-let keypair = Keystore::load("/tmp/key.json", "mi-passphrase").unwrap();
-
-// Firmar una transacción
-let tx = PqTxRequest {
-    chain_id: 1,
-    nonce: 0,
-    to: Some(recipient_address),
-    value: 1_000_000_000_000_000_000u128,  // 1 ETH en wei
-    gas_limit: 21_000,
-    gas_price: 1_000_000_000,
-    input: vec![],
-};
-
-let signer = PqSigner::new(&keypair);
-let signed = signer.sign(tx);
-
-// Encoding EIP-2718 listo para enviar por JSON-RPC
-let raw = signed.encode();
-```
-
-### `RpcClient`
-
-Cliente JSON-RPC mínimo (sin dependencias de alloy-providers):
-
-```rust
-use pq_wallet_core::RpcClient;
-
-let client = RpcClient::new("http://localhost:8545");
-
-let balance = client.get_balance(address).await?;
-let nonce    = client.get_nonce(address).await?;
-let chain_id = client.chain_id().await?;
-let gas_price = client.gas_price().await?;
-let tx_hash  = client.send_raw_transaction(&raw_hex).await?;
-```
-
----
-
-## Ejecutar tests
+## Running Tests
 
 ```bash
 cd pq-wallet
-cargo test
-# 6/6 tests pass
+cargo test --workspace
 ```
 
 ---
 
-## Notas de seguridad
+## Security Notes
 
-- No usar en mainnet con fondos reales. Código experimental.
-- La passphrase se lee por stdin sin echo. Evitar pasarla por `--passphrase`
-  en producción (queda en el historial de shell).
-- El archivo keystore **no es secreto por sí solo**: sin la passphrase no se
-  puede recuperar la clave privada. Aun así, guárdalo en un lugar seguro.
-- Hacer backup del keystore **y** de la passphrase por separado.
+- Experimental code — not for production use with real funds.
+- Passphrase is read from stdin without echo. Avoid `--passphrase` in production
+  (visible in shell history).
+- The keystore file alone is not secret without the passphrase. Store securely anyway.
+- Backup keystore AND passphrase separately.

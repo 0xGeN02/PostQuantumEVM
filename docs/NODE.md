@@ -2,35 +2,102 @@
 
 ## Overview
 
-PostQuantumEVM is a post-quantum resistant Ethereum execution client built as a non-invasive extension of [reth](https://github.com/paradigmxyz/reth). It replaces ECDSA/secp256k1 entirely with **ML-DSA-65 (CRYSTALS-Dilithium)** for transaction signing and verification, adds a native **SHAKE-256** hashing opcode, and disables all classical elliptic curve precompiles vulnerable to quantum attacks.
+PostQuantumEVM is a post-quantum resistant Ethereum execution client built as a non-invasive extension of [reth](https://github.com/paradigmxyz/reth). It replaces ECDSA/secp256k1 entirely with **ML-DSA-65 (CRYSTALS-Dilithium)** for transaction signing and verification, uses **SHAKE-256** for all protocol-level hashing, and disables all classical elliptic curve precompiles vulnerable to quantum attacks.
 
-The project follows NIST FIPS 204 (ML-DSA) and FIPS 203 (ML-KEM) standards.
+**Chain ID:** 20561 | **Native Token:** qETH | **Tx Type:** `0x50` | **Gas Limit:** 30M
 
 ---
 
 ## Architecture
 
 ```
-PostQuantumEVM/
-├── pq-reth/                         # Forked reth (git submodule)
-│   └── crates/pq/                   # 7 new PQ crates (non-invasive)
-│       ├── reth-pq-primitives       # Core types: PqSignedTransaction, PqSigner
-│       ├── reth-pq-consensus        # Transaction validation (ML-DSA-65 verify)
-│       ├── reth-pq-precompile       # ML-DSA-65 verify precompile at 0x0100
-│       ├── reth-pq-evm             # Custom EvmFactory, disabled precompiles
-│       ├── reth-pq-pool            # Transaction pool with PQ validation
-│       ├── reth-pq-node-primitives  # PqPrimitives (NodePrimitives impl)
-│       └── reth-pq-node            # PqNode definition, RPC, engine, payload
-├── ml-lattice-rs/                   # PQ crypto library (submodule)
-│   ├── dilithium/                   # ML-DSA wrapper (FIPS 204)
-│   └── kyber/                       # ML-KEM wrapper (FIPS 203)
-├── pq-wallet/                       # PQ wallet (CLI + core)
-└── qiskit-api/                      # Quantum attack simulation (Shor/Grover)
+pq-reth/
+├── bin/pq-reth/
+│   ├── main.rs             # Entry point (PqNode::launch)
+│   └── genesis.json        # Chain spec (chain_id 20561, pre-funded accounts)
+└── crates/pq/
+    ├── reth-pq-primitives  # PqSignedTransaction, PqSigner, RLP codec, Compact codec
+    ├── reth-pq-consensus   # ML-DSA-65 transaction validation
+    ├── reth-pq-precompile  # ML-DSA-65 verify precompile at 0x0100
+    ├── reth-pq-evm         # PqEvmFactory, PQHASH opcode, disabled precompiles
+    ├── reth-pq-pool        # PqPoolValidator (sig verify + state checks)
+    ├── reth-pq-node-primitives # PqPrimitives (NodePrimitives impl)
+    ├── reth-pq-node        # PqNode, engine, RPC, payload builder
+    └── reth-pq-poa         # PoA engine (ML-DSA-65 block sealing)
 ```
 
 ### Integration Strategy
 
-All PQ code lives inside the reth workspace as new crates under `crates/pq/`. No upstream reth code is modified except for an optional `pq` feature flag in `reth-rpc-convert`. This enables clean rebasing against upstream reth updates.
+All PQ code lives inside the reth workspace as new crates under `crates/pq/`. No upstream reth code is modified. This enables clean rebasing against upstream reth releases.
+
+---
+
+## Running the Node
+
+### Single Node (Dev Mode)
+
+```bash
+cd pq-reth
+cargo run -p pq-reth --bin pq-reth -- node \
+  --chain bin/pq-reth/genesis.json \
+  --dev \
+  --dev.block-time 5s \
+  --http \
+  --http.addr 0.0.0.0 \
+  --http.port 8545 \
+  --http.api eth,net,web3,admin
+```
+
+**Data directory:** `~/.local/share/reth/20561/`
+
+> To reset state (e.g., after genesis changes): `rm -rf ~/.local/share/reth/20561`
+
+### Docker (Single Node)
+
+```bash
+docker build -f Dockerfile.pq-reth -t pqevm-node:latest .
+docker run -p 8545:8545 pqevm-node:latest
+```
+
+### Docker Compose (3-Validator PoA)
+
+```bash
+# 1. Generate validator keys
+./scripts/generate-validator-keys.sh
+
+# 2. Build and launch
+docker compose build
+docker compose up -d
+
+# 3. Check status
+docker compose logs -f pq-validator-1
+
+# RPC endpoints:
+#   Validator 1: http://localhost:8545
+#   Validator 2: http://localhost:8546
+#   Validator 3: http://localhost:8547
+```
+
+### Kubernetes (Production-like)
+
+```bash
+# Prerequisites: kubectl configured, Docker image pushed to registry
+
+# 1. Apply manifests
+kubectl apply -f e2e/k8s/00-namespace.yaml
+kubectl apply -f e2e/k8s/01-genesis-configmap.yaml
+kubectl apply -f e2e/k8s/02-poa-configs.yaml
+kubectl apply -f e2e/k8s/03-services.yaml
+kubectl apply -f e2e/k8s/04-validators-statefulset.yaml
+
+# 2. Check pods
+kubectl get pods -n pqevm
+
+# 3. Access RPC (LoadBalancer)
+kubectl get svc pq-rpc -n pqevm
+```
+
+See [e2e/k8s/README.md](../e2e/k8s/README.md) for full details.
 
 ---
 
@@ -38,65 +105,105 @@ All PQ code lives inside the reth workspace as new crates under `crates/pq/`. No
 
 ### Type Envelope
 
-PQ transactions use EIP-2718 type **`0x04`**.
+PQ transactions use EIP-2718 type **`0x50`** (`'P'` for Post-Quantum). This avoids
+collision with EIP-7702 (type 4) and maps to `TransactionType::Custom` in revm.
+
+### Wire Format
+
+```
+0x50 || RLP([chain_id, nonce, gas_price, gas_limit, to, value, input, signature, public_key])
+```
 
 ### Unsigned Transaction Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `chain_id` | `u64` | Chain identifier |
+| `chain_id` | `u64` | Chain identifier (20561) |
 | `nonce` | `u64` | Sender's transaction count |
 | `gas_price` | `u128` | Gas price in wei |
 | `gas_limit` | `u64` | Maximum gas for execution |
-| `to` | `Option<Address>` | Recipient (None for contract creation) |
-| `value` | `u128` | ETH value in wei |
+| `to` | `Option<Address>` | Recipient (None = contract creation) |
+| `value` | `u128` | Value in wei |
 | `input` | `Bytes` | Calldata / contract init code |
 
 ### Signing Hash
 
+All protocol-level hashing uses SHAKE-256 (XOF):
+
 ```
-signing_hash = keccak256(
-    0x04 ||
-    chain_id (8 bytes BE) ||
-    nonce (8 bytes BE) ||
-    gas_price (16 bytes BE) ||
-    gas_limit (8 bytes BE) ||
-    to_flag (1 byte: 0x01 if Some, 0x00 if None) ||
-    [to (20 bytes) if Some] ||
-    value (16 bytes BE) ||
-    input (variable)
-)
+signing_hash = shake256(
+    0x50                       ||    // 1 byte (tx type)
+    chain_id                   ||    // 8 bytes, big-endian
+    nonce                      ||    // 8 bytes, big-endian
+    gas_price                  ||    // 16 bytes, big-endian
+    gas_limit                  ||    // 8 bytes, big-endian
+    to_flag                    ||    // 1 byte (0x01 present, 0x00 absent)
+    [to_address]               ||    // 20 bytes (only if to_flag = 0x01)
+    value                      ||    // 16 bytes, big-endian
+    input                            // variable length
+, 32)  → 32 bytes output
 ```
-
-> **Note**: Will be migrated to SHAKE-256 in a future update for cryptographic consistency with ML-DSA.
-
-### Signed Transaction
-
-A signed PQ transaction contains:
-- The unsigned transaction fields
-- ML-DSA-65 signature (3309 bytes)
-- ML-DSA-65 public key (1952 bytes)
-- Cached transaction hash
 
 ### Transaction Hash
 
 ```
-tx_hash = keccak256(0x04 || signing_hash || signature_bytes || public_key_bytes)
-```
-
-### Wire Format (EIP-2718 encoded)
-
-```
-0x04 || RLP([chain_id, nonce, gas_price, gas_limit, to, value, input, signature, public_key])
+tx_hash = shake256(0x50 || signing_hash || signature_bytes || public_key_bytes, 32)
 ```
 
 ### Sender Recovery
 
-Unlike ECDSA, ML-DSA signatures are **not recoverable** — the public key is embedded directly in the transaction. The sender address is derived as:
+ML-DSA signatures are **not recoverable** — the public key is embedded in the transaction.
+The sender address is derived as:
 
 ```
-sender = keccak256(public_key_bytes)[12..]
+sender = shake256(public_key_bytes, 32)[12..]
 ```
+
+---
+
+## Consensus
+
+### Proof of Authority (PoA)
+
+PostQuantumEVM uses a **round-robin PoA** mechanism with ML-DSA-65 block sealing:
+
+- Fixed validator set (configured in `poa-config.json`)
+- Round-robin block production based on `block_number % num_validators`
+- Each block includes an ML-DSA-65 signature (seal) over the block hash
+- Slot time: 5 seconds (configurable)
+
+#### PoA Configuration
+
+```json
+{
+  "slot_time_ms": 5000,
+  "local_address": "0x<validator-address>",
+  "validators": [
+    {
+      "address": "0x<address-1>",
+      "public_key": "0x<ml-dsa-65-public-key-hex>"
+    },
+    {
+      "address": "0x<address-2>",
+      "public_key": "0x<ml-dsa-65-public-key-hex>"
+    },
+    {
+      "address": "0x<address-3>",
+      "public_key": "0x<ml-dsa-65-public-key-hex>"
+    }
+  ]
+}
+```
+
+Set via environment variable: `PQ_POA_CONFIG=/path/to/poa-config.json`
+
+### Fee Model
+
+Standard EIP-1559:
+- Base fee: burned
+- Priority fee: paid to the block-producing validator
+- No block reward
+- Gas limit: follows parent block (1/1024 rule)
 
 ---
 
@@ -106,111 +213,52 @@ sender = keccak256(public_key_bytes)[12..]
 
 | Opcode | Name | Stack | Description | Gas |
 |--------|------|-------|-------------|-----|
-| `0x21` | **PQHASH** | `(offset, length) → hash` | Computes SHAKE-256 over memory region, returns 32-byte digest | 30 + 6 per word |
+| `0x21` | **PQHASH** | `(offset, length) → hash` | SHAKE-256 over memory region → 32 bytes | 30 + 6/word |
 
-**Rationale**: ML-DSA internally uses SHAKE-256. Adding a native opcode ensures cryptographic consistency — the entire PQ layer (signatures + hashing) uses the same SHA-3 family. The slot `0x21` is adjacent to KECCAK256 (`0x20`).
+### Disabled Precompiles (14)
 
-Smart contracts can use `PQHASH` for post-quantum secure hashing while `KECCAK256` remains available for backward compatibility.
-
-### Disabled Precompiles (13)
-
-All classical elliptic curve precompiles are disabled and return `PrecompileError`:
+All classical elliptic curve precompiles are disabled:
 
 | Address | Name | Reason |
 |---------|------|--------|
-| `0x01` | ecrecover | ECDSA — broken by Shor's algorithm |
-| `0x06` | ecAdd | BN254 point addition — classical curve |
-| `0x07` | ecMul | BN254 scalar multiplication — classical curve |
-| `0x08` | ecPairing | BN254 pairing — broken by Shor's |
-| `0x0a` | point_evaluation | KZG (EIP-4844) — relies on BLS12-381 DLP |
-| `0x0b` | bls12_g1Add | BLS12-381 — classical curve |
-| `0x0c` | bls12_g1Mul | BLS12-381 — classical curve |
-| `0x0d` | bls12_g1Msm | BLS12-381 — classical curve |
-| `0x0e` | bls12_g2Add | BLS12-381 — classical curve |
-| `0x0f` | bls12_g2Mul | BLS12-381 — classical curve |
-| `0x10` | bls12_g2Msm | BLS12-381 — classical curve |
-| `0x11` | bls12_pairing | BLS12-381 — classical curve |
-| `0x12` | bls12_map_fp_to_g1 | Hash-to-curve on broken curve |
-| `0x13` | bls12_map_fp2_to_g2 | Hash-to-curve on broken curve |
+| `0x01` | ecrecover | ECDSA — broken by Shor's |
+| `0x06`–`0x08` | BN254 (ecAdd/Mul/Pairing) | Classical curve |
+| `0x0a` | point_evaluation (KZG) | BLS12-381 DLP |
+| `0x0b`–`0x13` | BLS12-381 (all 9) | Classical curve |
 
 ### Kept Precompiles (quantum-safe)
 
 | Address | Name | Justification |
 |---------|------|---------------|
-| `0x02` | SHA-256 | Hash function — Grover reduces to 128-bit (sufficient) |
+| `0x02` | SHA-256 | Hash — Grover reduces to 128-bit (sufficient) |
 | `0x03` | RIPEMD-160 | Hash function |
-| `0x04` | Identity | Data copy — no cryptographic assumptions |
-| `0x05` | ModExp | Pure arithmetic — not a security primitive |
-| `0x09` | Blake2f | Hash compression — quantum-safe |
+| `0x04` | Identity | Data copy — no crypto |
+| `0x05` | ModExp | Pure arithmetic |
+| `0x09` | Blake2f | Hash compression |
 
 ### New Precompiles
 
 | Address | Name | Input | Output | Gas |
 |---------|------|-------|--------|-----|
-| `0x0100` | **pq_verify** | `msg_hash(32) \|\| sig(3309) \|\| pk(1952)` = 5293 bytes | `0x01` (valid) or `0x00` (invalid) | 50,000 (pending benchmark) |
-| `0x0101` | **pq_batch_verify** | `N(4) \|\| [msg_hash(32) \|\| sig(3309) \|\| pk(1952)] × N` | `0x01` (all valid) or `0x00` | ~40,000 × N × 0.7 |
-| `0x0102` | **pq_decapsulate** | `ciphertext(1088) \|\| dk(2400)` = 3488 bytes | `shared_secret(32)` | TBD |
-
-### Unchanged EVM Opcodes
-
-All standard EVM opcodes remain functional:
-
-- **`CALLER` / `ORIGIN`** — Work normally. Addresses are derived from ML-DSA public keys but remain 20 bytes.
-- **`CREATE` / `CREATE2`** — Unchanged. Contract address derivation uses keccak256 over sender address + nonce/salt (no public key involved).
-- **`KECCAK256` (0x20)** — Kept for internal EVM operations (storage slots, ABI encoding, function selectors).
-- **`SELFDESTRUCT`** — Unchanged (deprecated per Ethereum roadmap).
-
----
-
-## Consensus
-
-### Block-Level Consensus
-
-The PQ node uses **`EthBeaconConsensus`** unchanged — standard Ethereum PoS block validation rules (gas limits, timestamps, difficulty).
-
-### Transaction-Level Validation
-
-`PqTransactionValidator` performs:
-1. Chain ID verification
-2. Gas limit > 0 check
-3. **ML-DSA-65 signature verification** (replaces ECDSA recovery)
-
-### Demo Mode
-
-For testing/demo purposes, reth's built-in `--dev` mode is used:
-- Auto-mines blocks at a configurable interval
-- No external Consensus Layer client required
-- Block production handled internally
+| `0x0100` | **pq_verify** | `msg_hash(32) \|\| sig(3309) \|\| pk(1952)` | `0x01` or `0x00` | 50,000 |
+| `0x0101` | **pq_batch_verify** | `N(4) \|\| [hash+sig+pk] × N` | `0x01` or `0x00` | ~40k × N × 0.7 |
+| `0x0102` | **pq_decapsulate** | `ct(1088) \|\| dk(2400)` | `shared_secret(32)` | TBD |
 
 ---
 
 ## Node Components
 
-| Component | Implementation | Purpose |
-|-----------|---------------|---------|
-| `PqNode` | `NodeTypes` + `Node<N>` | Top-level node type definition |
-| `PqEvmConfig` | `ConfigureEvm` | EVM with PQ precompiles + PQHASH opcode |
-| `PqEvmFactory` | `EvmFactory` | Creates EVM instances with custom precompile set |
-| `PqPoolValidator` | `TransactionValidator` | Mempool ML-DSA-65 signature check |
-| `PqConsensusBuilder` | `EthBeaconConsensus` | Block consensus rules |
-| `PqEngineValidator` | Engine API handler | Payload validation for CL communication |
-| `PqPayloadBuilder` | Payload construction | Pulls PQ txs from pool, executes via PqEvmConfig |
-| `PqRpcTxConverter` | RPC layer | Converts PQ transactions for JSON-RPC responses |
-| `PqReceiptBuilder` | Receipt construction | Maps PQ tx type to receipt format |
-
----
-
-## Cryptographic Primitives
-
-| Primitive | Algorithm | Standard | Size |
-|-----------|-----------|----------|------|
-| Signing key | ML-DSA-65 | NIST FIPS 204 | 4032 bytes |
-| Verifying key | ML-DSA-65 | NIST FIPS 204 | 1952 bytes |
-| Signature | ML-DSA-65 | NIST FIPS 204 | 3309 bytes |
-| Key encapsulation | ML-KEM-768 | NIST FIPS 203 | 1184 / 2400 / 1088 bytes |
-| Protocol hashing | SHAKE-256 | NIST FIPS 202 | 32 bytes output |
-| EVM hashing (opcode) | SHAKE-256 | NIST FIPS 202 | 32 bytes output |
-| EVM hashing (legacy) | KECCAK-256 | — | 32 bytes output |
+| Component | Purpose |
+|-----------|---------|
+| `PqNode` | Top-level node type (NodeTypes + Node trait) |
+| `PqEvmConfig` | EVM with PQ precompiles + PQHASH opcode |
+| `PqEvmFactory` | Creates EVM instances with custom precompile set |
+| `PqPoolValidator` | Mempool validator: ML-DSA-65 sig check + nonce/balance |
+| `PqPoaConsensus` | Block seal verification (ML-DSA-65) |
+| `PoaMiningStream` | Round-robin block production + sealing |
+| `PqPayloadBuilder` | Pulls PQ txs from pool, executes, builds blocks |
+| `PqRpcTxConverter` | JSON-RPC transaction serialization |
+| `PqReceiptBuilder` | Receipt construction for PQ tx type |
 
 ---
 
@@ -224,11 +272,14 @@ For testing/demo purposes, reth's built-in `--dev` mode is used:
 | 8545 | TCP | HTTP JSON-RPC |
 | 8546 | TCP | WebSocket JSON-RPC |
 | 9001 | TCP | Metrics (Prometheus) |
-| 8551 | TCP | Engine API (if using CL) |
 
-### P2P
+### Genesis
 
-Standard Ethereum P2P stack is reused (devp2p). PQ transactions are ~5.3KB (vs ~100-200 bytes for classical ECDSA transactions) due to larger signatures and embedded public keys.
+The genesis file (`bin/pq-reth/genesis.json`) configures:
+- Chain ID: 20561
+- Gas limit: 30,000,000 (30M)
+- Pre-funded accounts: 11 addresses with 10,000 qETH each
+- All hardforks enabled through Prague
 
 ---
 
@@ -254,27 +305,11 @@ library PQVerify {
 
 ### Breaking Changes for Solidity Developers
 
-The following patterns **no longer work** on the PQ chain:
-
 | Pattern | Status | Alternative |
 |---------|--------|-------------|
-| `ecrecover(hash, v, r, s)` | Reverts always | Use `PQVerify.verify()` |
+| `ecrecover(hash, v, r, s)` | Reverts | Use `PQVerify.verify()` |
 | OpenZeppelin `ECDSA.recover()` | Broken | Use PQ signature checker |
 | ERC-2612 `permit()` | Broken | Implement PQ-based permit |
 | EIP-712 typed data signing | Broken | Use ML-DSA over typed hash |
-| BLS signature aggregation | Broken | Not available (ML-DSA has no native aggregation) |
-| ZK proof verification (Groth16) | Broken | Requires PQ-friendly ZK system |
-
-### Using PQHASH in Solidity
-
-The `PQHASH` opcode (`0x21`) is accessible via inline assembly:
-
-```solidity
-function pqHash(bytes memory data) internal pure returns (bytes32 result) {
-    assembly {
-        result := pqhash(add(data, 0x20), mload(data))
-    }
-}
-```
-
-> **Note**: Solidity compiler support for the `pqhash` mnemonic requires a custom build or inline `verbatim` usage until upstream support is added.
+| BLS signature aggregation | Broken | Not available |
+| ZK proof verification (Groth16) | Broken | Requires PQ-friendly ZK |

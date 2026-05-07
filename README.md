@@ -1,4 +1,4 @@
-# PostQuantum EVM
+# PostQuantumEVM
 
 ## A Post-Quantum Cryptography EVM Blockchain
 
@@ -12,118 +12,220 @@
 </div>
 
 > [!IMPORTANT]
-> **Preparing blockchain systems for the post-quantum era.**  
-> **This project demonstrates a forward-looking approach to cryptographic security.**
+> **Preparing blockchain systems for the post-quantum era.**
+> This project replaces all ECDSA/secp256k1 primitives with ML-DSA-65 (NIST FIPS 204)
+> and demonstrates a fully post-quantum resistant EVM chain.
 
 ---
 
 ## Overview
 
-The **Post-Quantum EVM Blockchain** is a forward-looking project that aims to adapt the Ethereum Virtual Machine (EVM) to the post-quantum era. By forking the Reth client, this project integrates post-quantum cryptographic primitives and introduces a comprehensive ecosystem to ensure the security and scalability of blockchain systems in the face of quantum computing threats.
+**PostQuantumEVM** is an Ethereum execution client hardened against quantum adversaries.
+Built as a non-invasive extension of [reth](https://github.com/paradigmxyz/reth), it
+replaces every classical elliptic-curve primitive with NIST-standardized post-quantum
+algorithms while maintaining full EVM compatibility.
 
-## Arquitecture
+| Classical (Ethereum) | Post-Quantum (PQ-EVM) | Standard |
+|---|---|---|
+| ECDSA / secp256k1 | ML-DSA-65 (Dilithium) | NIST FIPS 204 |
+| ECDH / secp256k1 | ML-KEM-768 (Kyber) | NIST FIPS 203 |
+| Keccak-256 (protocol hash) | SHAKE-256 | NIST FIPS 202 |
+| ecrecover precompile | ML-DSA verify precompile (`0x0100`) | --- |
 
-![arquitecture](./docs/architecture.png)
-
-### Key Components
-
-| Component                          | Description                                                                 |
-|------------------------------------|-----------------------------------------------------------------------------|
-| **Post-Quantum Cryptographic Library** | Rust-based library implementing NIST-standardized post-quantum algorithms. |
-| **Post-Quantum Wallets**           | Secure wallets for key management and transaction signing.                 |
-| **Qiskit API**                     | Python-based API for simulating quantum attacks and testing resilience.    |
-| **Post-Quantum Reth Client**       | Forked Reth client with post-quantum cryptographic primitives.             |
-| **EIP-Compatible Precompiled Contracts** | Custom precompiled contracts for post-quantum cryptographic operations.    |
-
-This project is designed to provide a robust foundation for building secure and scalable blockchain systems that are resistant to quantum computing threats, while maintaining compatibility with existing EVM-based smart contracts.
+**Chain ID:** `20561` | **Native Token:** qETH (18 decimals) | **Tx Type:** `0x50`
 
 ---
 
-## Roadmap
+## Quick Start
 
-### Phase 1: Post-Quantum Cryptographic Library
+### Prerequisites
 
-- Develop a Rust-based library implementing NIST-standardized post-quantum algorithms:
-  - CRYSTALS-Dilithium for digital signatures.
-  - CRYSTALS-Kyber for key encapsulation.
-  - SPHINCS+ for hash-based signatures.
-- Benchmark post-quantum algorithms against classical cryptographic alternatives.
+- Rust 1.84+ (rustup)
+- Docker 24+ (for multi-validator deployment)
+- Git (with submodule support)
 
-### Phase 2: Post-Quantum Wallets
+### 1. Clone
 
-- Design and implement post-quantum wallets for secure key management and transaction signing.
-- Integrate the post-quantum cryptographic library into wallet operations.
-- Ensure compatibility with the modified Reth client and EVM.
+```bash
+git clone --recurse-submodules https://github.com/0xGeN02/PostQuantumEVM.git
+cd PostQuantumEVM
+```
 
-### Phase 3: Qiskit API for Quantum Attack Simulation
+### 2. Run a Single Node (Dev Mode)
 
-- Develop a Python-based API using Qiskit to simulate quantum attacks:
-  - Implement Grover's algorithm to test hash function vulnerabilities.
-  - Implement Shor's algorithm to demonstrate the breaking of classical cryptographic primitives.
-- Provide endpoints for testing blockchain resilience against quantum attacks.
+```bash
+cd pq-reth
+cargo run -p pq-reth --bin pq-reth -- node \
+  --chain bin/pq-reth/genesis.json \
+  --dev \
+  --dev.block-time 5s \
+  --http \
+  --http.api eth,net,web3
+```
 
-### Phase 4: Post-Quantum Reth Client
+The node starts on `http://localhost:8545` with a pre-funded genesis (10k qETH per account).
 
-- Fork the Reth client and integrate the post-quantum cryptographic library.
-- Modify the Reth client to support post-quantum cryptographic primitives for:
-  - Transaction validation.
-  - Block verification.
-  - Consensus mechanisms.
-- Ensure compatibility with existing EVM-based smart contracts.
+### 3. Use the Wallet
 
-### Phase 5: EIP-Compatible Precompiled Contracts
+```bash
+cd pq-wallet
 
-- Define EIPs for post-quantum cryptographic operations in the EVM.
-- Implement precompiled contracts for:
-  - Post-quantum key derivation and transaction signing.
-  - Post-quantum hash functions (e.g., BLAKE3, SHA3).
-  - Post-quantum digital signatures (e.g., Dilithium).
-- Adapt opcode semantics and gas metering for post-quantum operations.
+# Generate a new ML-DSA-65 keypair
+cargo run --bin pq-wallet -- new --output keystore.json
 
-### Phase 6: Post-Quantum Blockchain Implementation
+# Check balance
+cargo run --bin pq-wallet -- balance --keystore keystore.json --rpc http://localhost:8545
 
-- Deploy the post-quantum blockchain using the modified Reth client.
-- Validate the blockchain's resistance to quantum attacks.
-- Provide detailed documentation and examples for developers to build post-quantum smart contracts.
+# Send a transaction
+cargo run --bin pq-wallet -- send \
+  --keystore keystore.json \
+  --to 0x1111111111111111111111111111111111111111 \
+  --value 1000000000000000000 \
+  --rpc http://localhost:8545
+```
 
-### Phase 7: Interactive CLI and Developer Tools
+### 4. Launch the TUI Dashboard
 
-- Develop a command-line interface (CLI) to:
-  - Initialize and manage the post-quantum blockchain.
-  - Create and manage post-quantum wallets.
-  - Simulate quantum attacks using the Qiskit API.
-  - Deploy and interact with post-quantum smart contracts.
-- Provide detailed documentation and examples for CLI usage.
+```bash
+cd pq-wallet
+cargo run --bin pq-tui
+```
+
+4-tab terminal dashboard: Wallet, Transactions, Blocks, Network.
+Hotkeys: `s`=Send, `d`=Deploy, `c`=Call, `r`=Refresh, `q`=Quit.
+
+### 5. Multi-Validator PoA (Docker)
+
+```bash
+# Generate 3 validator keys
+./scripts/generate-validator-keys.sh
+
+# Build and start 3 validators
+docker compose build
+docker compose up -d
+
+# RPC endpoints:
+#   Validator 1: http://localhost:8545
+#   Validator 2: http://localhost:8546
+#   Validator 3: http://localhost:8547
+```
+
+### 6. Seed the Chain with Demo Data
+
+```bash
+cd pq-wallet
+cargo run --bin pq-seed -- \
+  --rpc http://localhost:8545 \
+  --keystore keystore.json \
+  --passphrase <your-passphrase> \
+  --transfers 10 \
+  --contract-calls 5
+```
+
+Sends transfers (varying amounts), deploys a SimpleStorage contract, and makes store() calls.
 
 ---
 
-## Why This Matters
+## Architecture
 
-The rise of quantum computing poses a significant threat to classical cryptographic systems, including those used in blockchain technologies like Ethereum. Algorithms such as **ECDSA** and **SHA-256**, which are foundational to current blockchain security, are vulnerable to quantum attacks like **Shor's algorithm** and **Grover's algorithm**. This could render existing blockchain systems insecure within the next decade.
+```
+PostQuantumEVM/
+├── pq-reth/                        # Forked reth (git submodule)
+│   ├── bin/pq-reth/                # Binary + genesis.json
+│   └── crates/pq/
+│       ├── reth-pq-primitives      # PqSignedTransaction, RLP, Compact codec
+│       ├── reth-pq-consensus       # ML-DSA-65 transaction validation
+│       ├── reth-pq-precompile      # ML-DSA-65 verify precompile at 0x0100
+│       ├── reth-pq-pool            # Mempool validator (sig verification + state)
+│       ├── reth-pq-evm             # PqEvmFactory, disabled classical precompiles
+│       ├── reth-pq-node-primitives # PqPrimitives (NodePrimitives impl)
+│       ├── reth-pq-node            # PqNode, engine, RPC, payload builder
+│       └── reth-pq-poa             # PoA engine (ML-DSA-65 block sealing)
+├── ml-lattice-rs/                  # PQ crypto library (git submodule)
+│   ├── dilithium/                  # ML-DSA-65 (FIPS 204)
+│   └── kyber/                      # ML-KEM-768 (FIPS 203)
+├── pq-wallet/                      # Wallet ecosystem
+│   ├── pq-wallet-core/             # Core library (keygen, signer, RPC, tx)
+│   ├── pq-wallet-cli/              # CLI binary (pq-wallet)
+│   ├── pq-wallet-tui/              # TUI dashboard (pq-tui)
+│   ├── pq-chain-seeder/            # Chain seeder for demos (pq-seed)
+│   └── pq-e2e-test/                # E2E validation framework (pq-e2e)
+├── qiskit-api/                     # Quantum attack simulation (Shor/Grover)
+├── contracts/                      # Solidity PQ precompile interfaces (Foundry)
+├── benchmarks/                     # Criterion.rs benchmarks
+├── e2e/                            # E2E orchestration
+│   ├── k8s/                        # Kubernetes manifests (3-validator cluster)
+│   └── run-e2e.sh                  # Orchestration script
+├── scripts/                        # Tooling scripts
+│   └── generate-validator-keys.sh  # ML-DSA-65 validator key generation
+├── Dockerfile.pq-reth              # Multi-stage Docker build
+└── docker-compose.yml              # 3-validator PoA Docker Compose
+```
 
-The **Post-Quantum EVM Blockchain** addresses these challenges by:
+---
 
-- **Post-Quantum Cryptography**: Integrating NIST-standardized post-quantum algorithms (e.g., CRYSTALS-Dilithium, CRYSTALS-Kyber, SPHINCS+) to replace vulnerable classical cryptographic primitives.
-- **EVM Compatibility**: Ensuring that the blockchain remains compatible with existing Ethereum smart contracts while introducing post-quantum security.
-- **Precompiled Contracts**: Providing EIP-compatible precompiled contracts for post-quantum cryptographic operations, enabling developers to build quantum-resistant smart contracts.
-- **Post-Quantum Wallets**: Offering secure wallets for key management and transaction signing using post-quantum cryptography.
-- **Quantum Attack Simulation**: Leveraging the Qiskit API to simulate quantum attacks and validate the blockchain's resilience.
+## Transaction Format
 
-This project is a critical step toward ensuring the long-term security and scalability of blockchain systems in the quantum era, enabling developers and organizations to future-proof their decentralized applications and infrastructure.
+PQ transactions use EIP-2718 type **`0x50`** (`'P'` for Post-Quantum).
+
+```
+0x50 || RLP([chain_id, nonce, gas_price, gas_limit, to, value, input,
+             signature (3309 B), public_key (1952 B)])
+```
+
+| Field | Classical tx | PQ tx |
+|---|---|---|
+| Signature | 65 B (r, s, v) | 3 309 B |
+| Public key | 0 B (recovered via ecrecover) | 1 952 B |
+| Total overhead | ~110 B | ~5 314 B |
+
+---
+
+## Consensus: Proof of Authority (PoA)
+
+PostQuantumEVM uses **round-robin PoA** with ML-DSA-65 block sealing:
+
+- Fixed validator set (3 by default)
+- Each validator signs blocks on their turn
+- 5-second slot time (configurable via `slot_time_ms`)
+- Block seal = ML-DSA-65 signature over the block hash
+- No BLS aggregation (quantum-vulnerable)
+
+Configuration: `PQ_POA_CONFIG=/path/to/poa-config.json`
+
+---
+
+## Key Sizes
+
+| | Classical Ethereum | PostQuantumEVM | Ratio |
+|---|---|---|---|
+| Private key | 32 B | 4 032 B | 126x |
+| Public key | 64 B | 1 952 B | 30x |
+| Signature | 65 B | 3 309 B | 51x |
+| Address | 20 B | 20 B | **1x** |
+
+Address derivation: `shake256(public_key_bytes, 32)[12..]`
+
+---
+
+## Documentation
+
+| Document | Description |
+|---|---|
+| [docs/README.md](docs/README.md) | Full technical documentation index |
+| [docs/NODE.md](docs/NODE.md) | Node architecture, Docker/K8s deployment |
+| [docs/WALLET.md](docs/WALLET.md) | Wallet, TUI, keystore, signing |
+| [docs/CONSENSUS.md](docs/CONSENSUS.md) | PoA consensus mechanism |
+| [docs/GAS_COST_ANALYSIS.md](docs/GAS_COST_ANALYSIS.md) | Gas pricing and throughput analysis |
+| [e2e/k8s/README.md](e2e/k8s/README.md) | Kubernetes deployment guide |
 
 ---
 
 ## Author
 
-**0xGeN02**  
-Building secure and scalable systems at the intersection of cryptography and distributed systems.  
+**0xGeN02**
+Building secure and scalable systems at the intersection of cryptography and distributed systems.
 [GitHub Profile](https://github.com/0xGeN02)
-
----
-
-## Published Paper
-
-The research paper detailing the design and implementation of the Post-Quantum EVM Blockchain will be published soon. Stay tuned for updates!
 
 ---
 
