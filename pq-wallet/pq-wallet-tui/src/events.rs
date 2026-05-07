@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-use crate::app::App;
+use crate::app::{App, Tab};
 
 /// Tick interval for auto-refresh (3 seconds).
 pub const TICK_RATE: Duration = Duration::from_secs(3);
@@ -27,17 +27,33 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             // refresh is triggered in the main loop
         }
 
-        // Transaction list navigation
-        KeyCode::Up | KeyCode::Char('k') => {
-            if app.tx_selected > 0 {
-                app.tx_selected -= 1;
+        // List navigation (context-dependent)
+        KeyCode::Up | KeyCode::Char('k') => match app.active_tab {
+            Tab::Transactions => {
+                if app.tx_selected > 0 {
+                    app.tx_selected -= 1;
+                }
             }
-        }
-        KeyCode::Down | KeyCode::Char('j') => {
-            if app.tx_selected + 1 < app.transactions.len() {
-                app.tx_selected += 1;
+            Tab::Blocks => {
+                if app.block_selected > 0 {
+                    app.block_selected -= 1;
+                }
             }
-        }
+            _ => {}
+        },
+        KeyCode::Down | KeyCode::Char('j') => match app.active_tab {
+            Tab::Transactions => {
+                if app.tx_selected + 1 < app.transactions.len() {
+                    app.tx_selected += 1;
+                }
+            }
+            Tab::Blocks => {
+                if app.block_selected + 1 < app.blocks.len() {
+                    app.block_selected += 1;
+                }
+            }
+            _ => {}
+        },
 
         _ => {}
     }

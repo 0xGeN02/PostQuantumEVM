@@ -26,6 +26,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     match app.active_tab {
         Tab::Wallet => draw_wallet_tab(f, app, chunks[1]),
         Tab::Transactions => draw_transactions_tab(f, app, chunks[1]),
+        Tab::Blocks => draw_blocks_tab(f, app, chunks[1]),
         Tab::Network => draw_network_tab(f, app, chunks[1]),
     }
 
@@ -289,6 +290,131 @@ fn draw_transactions_tab(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(table, area);
 }
 
+fn draw_blocks_tab(f: &mut Frame, app: &App, area: Rect) {
+    if app.blocks.is_empty() {
+        let msg = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "  No blocks found. Is the node running?",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ])
+        .block(Block::default().borders(Borders::ALL).title(" Blocks "));
+        f.render_widget(msg, area);
+        return;
+    }
+
+    // Split: table on top, detail on bottom
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(10),    // block list
+            Constraint::Length(10), // block detail
+        ])
+        .split(area);
+
+    // ─── Block table ───
+    let header_cells = ["#", "Hash", "Txs", "Gas Used", "Gas %", "Base Fee", "Timestamp"]
+        .iter()
+        .map(|h| Cell::from(*h).style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
+    let header = Row::new(header_cells).height(1);
+
+    let rows = app.blocks.iter().enumerate().map(|(i, blk)| {
+        let style = if i == app.block_selected {
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+
+        let hash_short = if blk.hash.len() > 14 {
+            format!("{}..{}", &blk.hash[..8], &blk.hash[blk.hash.len() - 4..])
+        } else {
+            blk.hash.clone()
+        };
+
+        let gas_pct = if blk.gas_limit > 0 {
+            format!("{:.1}%", (blk.gas_used as f64 / blk.gas_limit as f64) * 100.0)
+        } else {
+            "0%".to_string()
+        };
+
+        let base_fee_gwei = blk.base_fee as f64 / 1e9;
+        let timestamp_str = format_timestamp(blk.timestamp);
+
+        Row::new(vec![
+            Cell::from(format!("{}", blk.number)),
+            Cell::from(hash_short),
+            Cell::from(format!("{}", blk.tx_count)),
+            Cell::from(format_gas(blk.gas_used)),
+            Cell::from(gas_pct),
+            Cell::from(format!("{:.2} Gwei", base_fee_gwei)),
+            Cell::from(timestamp_str),
+        ])
+        .style(style)
+    });
+
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Length(7),
+            Constraint::Length(14),
+            Constraint::Length(5),
+            Constraint::Length(10),
+            Constraint::Length(7),
+            Constraint::Length(12),
+            Constraint::Min(12),
+        ],
+    )
+    .header(header)
+    .block(Block::default().borders(Borders::ALL).title(format!(
+        " Blocks — Latest #{} ",
+        app.block_number
+    )));
+
+    f.render_widget(table, chunks[0]);
+
+    // ─── Block detail panel ───
+    if let Some(blk) = app.blocks.get(app.block_selected) {
+        let detail = vec![
+            Line::from(vec![
+                Span::styled("  Block:     ", Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("#{}", blk.number), Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(vec![
+                Span::styled("  Hash:      ", Style::default().fg(Color::DarkGray)),
+                Span::styled(&blk.hash, Style::default().fg(Color::Cyan)),
+            ]),
+            Line::from(vec![
+                Span::styled("  Miner:     ", Style::default().fg(Color::DarkGray)),
+                Span::styled(&blk.miner, Style::default().fg(Color::Yellow)),
+            ]),
+            Line::from(vec![
+                Span::styled("  Gas:       ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("{} / {} ({:.1}%)", format_gas(blk.gas_used), format_gas(blk.gas_limit),
+                        (blk.gas_used as f64 / blk.gas_limit.max(1) as f64) * 100.0),
+                    Style::default().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("  Base fee:  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("{:.4} Gwei ({} wei)", blk.base_fee as f64 / 1e9, blk.base_fee),
+                    Style::default().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("  Txs:       ", Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("{}", blk.tx_count), Style::default().fg(Color::Green)),
+            ]),
+        ];
+
+        let detail_widget = Paragraph::new(detail)
+            .block(Block::default().borders(Borders::ALL).title(" Block Detail (↑/↓ to navigate) "));
+        f.render_widget(detail_widget, chunks[1]);
+    }
+}
+
 fn draw_network_tab(f: &mut Frame, app: &App, area: Rect) {
     let status_color = if app.connected { Color::Green } else { Color::Red };
     let status_text = if app.connected { "CONNECTED" } else { "DISCONNECTED" };
@@ -382,7 +508,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
             Style::default().fg(if app.connected { Color::Green } else { Color::Red }),
         ),
         Span::styled(
-            format!(" Block #{}", app.block_number),
+            if app.connected { " Connected" } else { " Disconnected" },
             Style::default().fg(Color::DarkGray),
         ),
     ]);
@@ -393,6 +519,41 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Format gas in human-readable form (e.g. "21.00K", "1.20M").
+fn format_gas(gas: u64) -> String {
+    if gas >= 1_000_000 {
+        format!("{:.2}M", gas as f64 / 1_000_000.0)
+    } else if gas >= 1_000 {
+        format!("{:.1}K", gas as f64 / 1_000.0)
+    } else {
+        format!("{gas}")
+    }
+}
+
+/// Format a UNIX timestamp as a relative or absolute time string.
+fn format_timestamp(ts: u64) -> String {
+    if ts == 0 {
+        return "genesis".to_string();
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    if now > ts {
+        let diff = now - ts;
+        if diff < 60 {
+            format!("{diff}s ago")
+        } else if diff < 3600 {
+            format!("{}m ago", diff / 60)
+        } else {
+            format!("{}h ago", diff / 3600)
+        }
+    } else {
+        format!("t={ts}")
+    }
+}
 
 /// Convert a hex wei value (e.g. "0xde0b6b3a7640000") to a human-readable string.
 /// Shows qETH if >= 0.001, otherwise shows wei.

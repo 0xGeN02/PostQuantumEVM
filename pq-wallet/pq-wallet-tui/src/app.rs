@@ -10,16 +10,18 @@ use tiny_keccak::{Hasher, Keccak};
 pub enum Tab {
     Wallet,
     Transactions,
+    Blocks,
     Network,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 3] = [Tab::Wallet, Tab::Transactions, Tab::Network];
+    pub const ALL: [Tab; 4] = [Tab::Wallet, Tab::Transactions, Tab::Blocks, Tab::Network];
 
     pub fn title(&self) -> &'static str {
         match self {
             Tab::Wallet => "Wallet",
             Tab::Transactions => "Transactions",
+            Tab::Blocks => "Blocks",
             Tab::Network => "Network",
         }
     }
@@ -27,7 +29,8 @@ impl Tab {
     pub fn next(&self) -> Self {
         match self {
             Tab::Wallet => Tab::Transactions,
-            Tab::Transactions => Tab::Network,
+            Tab::Transactions => Tab::Blocks,
+            Tab::Blocks => Tab::Network,
             Tab::Network => Tab::Wallet,
         }
     }
@@ -36,7 +39,8 @@ impl Tab {
         match self {
             Tab::Wallet => Tab::Network,
             Tab::Transactions => Tab::Wallet,
-            Tab::Network => Tab::Transactions,
+            Tab::Blocks => Tab::Transactions,
+            Tab::Network => Tab::Blocks,
         }
     }
 }
@@ -58,6 +62,19 @@ pub struct TxRecord {
     pub pk_size: usize,
     /// Transaction type (0x50 = PQ).
     pub tx_type: String,
+}
+
+/// A block record for the Blocks tab.
+#[derive(Debug, Clone)]
+pub struct BlockRecord {
+    pub number: u64,
+    pub hash: String,
+    pub timestamp: u64,
+    pub gas_used: u64,
+    pub gas_limit: u64,
+    pub tx_count: usize,
+    pub base_fee: u128,
+    pub miner: String,
 }
 
 /// The main application state.
@@ -98,6 +115,10 @@ pub struct App {
     pub transactions: Vec<TxRecord>,
     pub tx_selected: usize,
 
+    // ─── Blocks ───
+    pub blocks: Vec<BlockRecord>,
+    pub block_selected: usize,
+
     // ─── Internal ───
     pub rpc: RpcClient,
     pub tick_count: u64,
@@ -130,6 +151,9 @@ impl App {
 
             transactions: Vec::new(),
             tx_selected: 0,
+
+            blocks: Vec::new(),
+            block_selected: 0,
 
             rpc: RpcClient::new(&rpc_url),
             tick_count: 0,
@@ -170,6 +194,9 @@ impl App {
         if self.transactions.is_empty() || self.tick_count % 3 == 0 {
             self.scan_recent_transactions().await;
         }
+
+        // Scan recent blocks for the Blocks tab
+        self.scan_recent_blocks().await;
     }
 
     /// Scan the last N blocks for transactions involving our address.
@@ -236,6 +263,46 @@ impl App {
         self.transactions = txs;
     }
 
+    /// Scan the last N blocks and store their metadata.
+    async fn scan_recent_blocks(&mut self) {
+        let end_block = self.block_number;
+        let start_block = end_block.saturating_sub(29); // last 30 blocks
+
+        let mut blocks = Vec::new();
+
+        for block_num in (start_block..=end_block).rev() {
+            let Ok(Some(block)) = self.rpc.get_block_by_number(block_num).await else {
+                continue;
+            };
+
+            let number = parse_hex_u64_val(block.get("number"));
+            let hash = block.get("hash").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let timestamp = parse_hex_u64_val(block.get("timestamp"));
+            let gas_used = parse_hex_u64_val(block.get("gasUsed"));
+            let gas_limit = parse_hex_u64_val(block.get("gasLimit"));
+            let base_fee = parse_hex_u128_val(block.get("baseFeePerGas"));
+            let miner = block.get("miner").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let tx_count = block
+                .get("transactions")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+
+            blocks.push(BlockRecord {
+                number,
+                hash,
+                timestamp,
+                gas_used,
+                gas_limit,
+                tx_count,
+                base_fee,
+                miner,
+            });
+        }
+
+        self.blocks = blocks;
+    }
+
     /// Load wallet address from keystore (no passphrase needed).
     pub fn load_keystore(&mut self) {
         let path = std::path::Path::new(&self.keystore_path);
@@ -292,4 +359,26 @@ impl App {
     pub fn balance_wei_str(&self) -> String {
         format!("{} wei", self.balance_wei)
     }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Parse a hex u64 from a JSON Value (e.g. "0x1a").
+fn parse_hex_u64_val(v: Option<&serde_json::Value>) -> u64 {
+    v.and_then(|v| v.as_str())
+        .map(|s| {
+            let s = s.strip_prefix("0x").unwrap_or(s);
+            u64::from_str_radix(s, 16).unwrap_or(0)
+        })
+        .unwrap_or(0)
+}
+
+/// Parse a hex u128 from a JSON Value (e.g. "0x34a360cb").
+fn parse_hex_u128_val(v: Option<&serde_json::Value>) -> u128 {
+    v.and_then(|v| v.as_str())
+        .map(|s| {
+            let s = s.strip_prefix("0x").unwrap_or(s);
+            u128::from_str_radix(s, 16).unwrap_or(0)
+        })
+        .unwrap_or(0)
 }
