@@ -47,19 +47,14 @@ impl Tab {
 
 /// A simplified transaction record for display.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct TxRecord {
     pub hash: String,
     pub block: String,
     pub from: String,
     pub to: Option<String>,
     pub value_wei: String,
-    pub gas_used: String,
-    pub status: String,
     /// PQ-specific: signature size in bytes.
     pub sig_size: usize,
-    /// PQ-specific: public key size in bytes.
-    pub pk_size: usize,
     /// Transaction type (0x50 = PQ).
     pub tx_type: String,
     /// Input data (calldata) hex string.
@@ -329,7 +324,6 @@ impl App {
 
                 let hash = tx.get("hash").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 let value = tx.get("value").and_then(|v| v.as_str()).unwrap_or("0x0").to_string();
-                let gas = tx.get("gas").and_then(|v| v.as_str()).unwrap_or("0x0").to_string();
                 let tx_type = tx.get("type").and_then(|v| v.as_str()).unwrap_or("0x0").to_string();
                 let input = tx.get("input").and_then(|v| v.as_str()).unwrap_or("0x").to_string();
 
@@ -351,10 +345,7 @@ impl App {
                     from,
                     to,
                     value_wei: value,
-                    gas_used: gas,
-                    status: "0x1".to_string(),
                     sig_size: self.sig_size,
-                    pk_size: self.pk_size,
                     tx_type,
                     input,
                     contract_address,

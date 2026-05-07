@@ -8,7 +8,6 @@ use super::runner::{TestResult, TestRunner};
 
 /// Simple init code: returns 0x42 from constructor (becomes contract code = "42" byte).
 /// What matters for testing: to=None triggers creation, receipt has contractAddress.
-#[allow(dead_code)]
 const SIMPLE_INIT_CODE: &str = "604260005260206000f3";
 
 /// Deploy a contract and verify the receipt.

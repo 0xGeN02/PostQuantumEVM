@@ -1,7 +1,7 @@
 //! ML-DSA-65 keypair — generation and address derivation.
 
 use alloy_primitives::Address;
-use dilithium::{signature::Keypair, EncodedVerifyingKey, MlDsa65, SigningKey, VerifyingKey};
+use dilithium::{signature::Keypair, MlDsa65, SigningKey, VerifyingKey};
 use sha3::{Shake256, digest::{ExtendableOutput, Update, XofReader}};
 
 use crate::error::WalletError;
@@ -76,22 +76,4 @@ impl PqKeypair {
         use dilithium::signature::Signer;
         self.sk.sign(msg).encode().as_slice().to_vec()
     }
-}
-
-/// Parse a `VerifyingKey<MlDsa65>` from raw bytes.
-pub fn verifying_key_from_bytes(bytes: &[u8]) -> Result<VerifyingKey<MlDsa65>, WalletError> {
-    let encoded = EncodedVerifyingKey::<MlDsa65>::try_from(bytes)
-        .map_err(|_| WalletError::InvalidPublicKey("wrong byte length".into()))?;
-    Ok(VerifyingKey::decode(&encoded))
-}
-
-/// Derive an Ethereum address from raw verifying-key bytes.
-///
-/// Uses SHAKE-256: `Address = shake256(pk_bytes, 32)[12..]`.
-pub fn address_from_pk_bytes(pk_bytes: &[u8]) -> Address {
-    let mut hasher = Shake256::default();
-    hasher.update(pk_bytes);
-    let mut hash = [0u8; 32];
-    hasher.finalize_xof().read(&mut hash);
-    Address::from_slice(&hash[12..])
 }

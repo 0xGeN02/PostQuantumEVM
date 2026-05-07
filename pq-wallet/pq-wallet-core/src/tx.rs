@@ -130,16 +130,6 @@ impl PqSignedTx {
         out
     }
 
-    /// Hex-encoded signature (for display/JSON).
-    pub fn signature_hex(&self) -> String {
-        hex::encode(&self.sig_bytes)
-    }
-
-    /// Hex-encoded public key (for display/JSON).
-    pub fn public_key_hex(&self) -> String {
-        hex::encode(&self.pk_bytes)
-    }
-
     fn compute_hash(tx: &PqTxRequest, sig: &[u8], pk: &[u8]) -> B256 {
         let mut h = Shake256::default();
         h.update(&[PQ_TX_TYPE]);

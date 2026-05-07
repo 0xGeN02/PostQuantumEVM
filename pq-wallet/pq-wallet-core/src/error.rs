@@ -18,22 +18,10 @@ pub enum WalletError {
     #[error("decryption failed — wrong passphrase or corrupted file")]
     DecryptionFailed,
 
-    /// The encrypted payload has an invalid length.
-    #[error("invalid keystore payload length")]
-    InvalidPayload,
-
     // ── Crypto ────────────────────────────────────────────────────────────────
     /// The raw signing key bytes have an unexpected length.
     #[error("invalid signing key bytes")]
     InvalidSigningKey,
-
-    /// The raw verifying key bytes have an unexpected length.
-    #[error("invalid public key bytes: {0}")]
-    InvalidPublicKey(String),
-
-    /// Signature bytes are malformed.
-    #[error("invalid signature bytes: {0}")]
-    InvalidSignature(String),
 
     // ── RPC ───────────────────────────────────────────────────────────────────
     /// HTTP transport error.

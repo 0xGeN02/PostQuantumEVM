@@ -6,7 +6,7 @@
 //! - Overall transaction processing overhead
 
 use alloy_primitives::{Address, U256};
-use alloy_rlp::{Encodable, MaxEncodedLenAssoc, RlpEncodable};
+use alloy_rlp::{Encodable, RlpEncodable};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 // ─── PQ Transaction (ML-DSA-65) ──────────────────────────────────────────────
