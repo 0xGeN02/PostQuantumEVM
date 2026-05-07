@@ -5,7 +5,7 @@
 //! - RLP encoding/decoding time
 //! - Overall transaction processing overhead
 
-use alloy_primitives::{Address, U256};
+use alloy_primitives::U256;
 use alloy_rlp::{Encodable, RlpEncodable};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
@@ -47,11 +47,11 @@ fn make_pq_tx() -> PqTxRlpFields {
         nonce: 42,
         gas_price: 1_000_000_000, // 1 gwei
         gas_limit: 21_000,
-        to: alloy_rlp::Bytes::copy_from_slice(&[0xABu8; 20][..Address::LEN]),
+        to: alloy_rlp::Bytes::copy_from_slice(&[0xABu8; 20]),
         value: U256::from(1_000_000_000_000_000_000u128), // 1 ETH
         input: alloy_rlp::Bytes::new(),
-        signature: alloy_rlp::Bytes::copy_from_slice(&vec![0xAAu8; 3309]),
-        public_key: alloy_rlp::Bytes::copy_from_slice(&vec![0xBBu8; 1952]),
+        signature: alloy_rlp::Bytes::copy_from_slice(&[0xAAu8; 3309]),
+        public_key: alloy_rlp::Bytes::copy_from_slice(&[0xBBu8; 1952]),
     }
 }
 
@@ -60,7 +60,7 @@ fn make_classical_tx() -> ClassicalTxRlpFields {
         nonce: 42,
         gas_price: 1_000_000_000,
         gas_limit: 21_000,
-        to: alloy_rlp::Bytes::copy_from_slice(&[0xABu8; 20][..Address::LEN]),
+        to: alloy_rlp::Bytes::copy_from_slice(&[0xABu8; 20]),
         value: U256::from(1_000_000_000_000_000_000u128),
         input: alloy_rlp::Bytes::new(),
         v: 28,

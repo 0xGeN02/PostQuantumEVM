@@ -75,28 +75,20 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> bool {
 
         // List navigation (context-dependent)
         KeyCode::Up | KeyCode::Char('k') => match app.active_tab {
-            Tab::Transactions => {
-                if app.tx_selected > 0 {
-                    app.tx_selected -= 1;
-                }
+            Tab::Transactions if app.tx_selected > 0 => {
+                app.tx_selected -= 1;
             }
-            Tab::Blocks => {
-                if app.block_selected > 0 {
-                    app.block_selected -= 1;
-                }
+            Tab::Blocks if app.block_selected > 0 => {
+                app.block_selected -= 1;
             }
             _ => {}
         },
         KeyCode::Down | KeyCode::Char('j') => match app.active_tab {
-            Tab::Transactions => {
-                if app.tx_selected + 1 < app.transactions.len() {
-                    app.tx_selected += 1;
-                }
+            Tab::Transactions if app.tx_selected + 1 < app.transactions.len() => {
+                app.tx_selected += 1;
             }
-            Tab::Blocks => {
-                if app.block_selected + 1 < app.blocks.len() {
-                    app.block_selected += 1;
-                }
+            Tab::Blocks if app.block_selected + 1 < app.blocks.len() => {
+                app.block_selected += 1;
             }
             _ => {}
         },

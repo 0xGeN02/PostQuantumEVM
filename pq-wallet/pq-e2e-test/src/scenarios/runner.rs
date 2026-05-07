@@ -63,7 +63,7 @@ impl TestRunner {
 
     /// All RPC clients.
     pub fn all_rpcs(&self) -> Vec<RpcClient> {
-        self.rpc_endpoints.iter().map(|url| RpcClient::new(url)).collect()
+        self.rpc_endpoints.iter().map(RpcClient::new).collect()
     }
 
     /// Run all test scenarios.

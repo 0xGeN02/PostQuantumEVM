@@ -278,7 +278,7 @@ impl App {
         }
 
         // Scan recent blocks for transactions (every 3rd tick or first time)
-        if self.transactions.is_empty() || self.tick_count % 3 == 0 {
+        if self.transactions.is_empty() || self.tick_count.is_multiple_of(3) {
             self.scan_recent_transactions().await;
         }
 

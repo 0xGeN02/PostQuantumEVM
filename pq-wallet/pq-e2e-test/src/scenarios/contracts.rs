@@ -112,7 +112,7 @@ pub async fn test_deploy_contract(runner: &mut TestRunner) {
             } else {
                 runner.record(TestResult::fail(
                     "Deploy contract",
-                    format!("status=REVERTED, no contractAddress"),
+                    "status=REVERTED, no contractAddress".to_string(),
                 ));
             }
         }

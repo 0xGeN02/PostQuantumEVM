@@ -265,8 +265,8 @@ async fn cmd_send(
     let client = RpcClient::new(&rpc);
 
     // Fetch chain_id, nonce, gas_price from node (unless dry_run skips RPC)
-    let (chain_id, nonce, gas_price) = if dry_run && gas_price.is_some() {
-        (1u64, 0u64, gas_price.unwrap())
+    let (chain_id, nonce, gas_price) = if let Some(gp) = gas_price.filter(|_| dry_run) {
+        (1u64, 0u64, gp)
     } else {
         let chain_id = client.chain_id().await.context("fetching chain_id")?;
         let nonce = client.get_nonce(keypair.address()).await.context("fetching nonce")?;
