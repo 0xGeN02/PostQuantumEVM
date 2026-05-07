@@ -62,6 +62,49 @@ pub struct TxRecord {
     pub pk_size: usize,
     /// Transaction type (0x50 = PQ).
     pub tx_type: String,
+    /// Input data (calldata) hex string.
+    pub input: String,
+    /// Contract address created (if contract creation tx).
+    pub contract_address: Option<String>,
+}
+
+/// Tx category for display purposes.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TxKind {
+    /// Simple value transfer.
+    Transfer,
+    /// Contract deployment (to = None).
+    Deploy,
+    /// Contract call (has calldata).
+    ContractCall,
+}
+
+impl TxRecord {
+    /// Determine the kind of transaction.
+    pub fn kind(&self) -> TxKind {
+        if self.to.is_none() {
+            TxKind::Deploy
+        } else if self.input.len() > 2 && self.input != "0x" {
+            TxKind::ContractCall
+        } else {
+            TxKind::Transfer
+        }
+    }
+
+    /// Get the 4-byte function selector if this is a contract call.
+    pub fn function_selector(&self) -> Option<String> {
+        if self.kind() == TxKind::ContractCall && self.input.len() >= 10 {
+            Some(self.input[..10].to_string())
+        } else {
+            None
+        }
+    }
+
+    /// Get calldata size in bytes.
+    pub fn calldata_size(&self) -> usize {
+        let hex_str = self.input.strip_prefix("0x").unwrap_or(&self.input);
+        hex_str.len() / 2
+    }
 }
 
 /// A block record for the Blocks tab.
@@ -77,12 +120,54 @@ pub struct BlockRecord {
     pub miner: String,
 }
 
+/// Interactive action mode (overlay prompts).
+#[derive(Debug, Clone, PartialEq)]
+pub enum ActionMode {
+    /// Normal mode — no action in progress.
+    None,
+    /// Sending a transfer: collecting fields.
+    Send { field: usize, to: String, value: String },
+    /// Deploying a contract: collecting init code.
+    Deploy { field: usize, code: String, gas_limit: String },
+    /// Calling a contract: collecting to + data.
+    Call { field: usize, to: String, data: String },
+    /// Show result of last action.
+    Result { message: String, success: bool },
+}
+
+/// Which action triggered the passphrase prompt.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PendingActionKind {
+    Send,
+    Deploy,
+}
+
+/// A completed action ready for async execution.
+#[derive(Debug, Clone)]
+pub enum PendingExec {
+    Send { to: String, value: String },
+    Deploy { code: String, gas_limit: String },
+    Call { to: String, data: String },
+}
+
 /// The main application state.
 pub struct App {
     /// Currently active tab.
     pub active_tab: Tab,
     /// Whether the app should quit.
     pub should_quit: bool,
+
+    // ─── Action mode (interactive prompts) ───
+    pub action: ActionMode,
+    /// Passphrase for signing (set once during session).
+    pub passphrase: Option<String>,
+    /// Passphrase input buffer (when prompting).
+    pub passphrase_input: String,
+    pub asking_passphrase: bool,
+    /// Which action triggered the passphrase prompt (Send or Deploy).
+    pub pending_action_kind: Option<PendingActionKind>,
+    /// A completed action waiting for async execution.
+    pub pending_exec: Option<PendingExec>,
 
     // ─── Wallet info ───
     pub address: Option<Address>,
@@ -129,6 +214,13 @@ impl App {
         Self {
             active_tab: Tab::Wallet,
             should_quit: false,
+
+            action: ActionMode::None,
+            passphrase: None,
+            passphrase_input: String::new(),
+            asking_passphrase: false,
+            pending_action_kind: None,
+            pending_exec: None,
 
             address: None,
             keystore_path,
@@ -239,6 +331,19 @@ impl App {
                 let value = tx.get("value").and_then(|v| v.as_str()).unwrap_or("0x0").to_string();
                 let gas = tx.get("gas").and_then(|v| v.as_str()).unwrap_or("0x0").to_string();
                 let tx_type = tx.get("type").and_then(|v| v.as_str()).unwrap_or("0x0").to_string();
+                let input = tx.get("input").and_then(|v| v.as_str()).unwrap_or("0x").to_string();
+
+                // For contract creation txs, try to get the receipt for the contract address
+                let contract_address = if to.is_none() {
+                    // We'll try to fetch the receipt to get the contract address
+                    if let Ok(Some(receipt)) = self.rpc.get_transaction_receipt(&hash).await {
+                        receipt.contract_address
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
 
                 txs.push(TxRecord {
                     hash,
@@ -247,10 +352,12 @@ impl App {
                     to,
                     value_wei: value,
                     gas_used: gas,
-                    status: "0x1".to_string(), // assume success if in block
+                    status: "0x1".to_string(),
                     sig_size: self.sig_size,
                     pk_size: self.pk_size,
                     tx_type,
+                    input,
+                    contract_address,
                 });
             }
 
@@ -358,6 +465,187 @@ impl App {
     /// Format balance in wei.
     pub fn balance_wei_str(&self) -> String {
         format!("{} wei", self.balance_wei)
+    }
+
+    // ─── Action execution ───
+
+    /// Execute a send/transfer action.
+    pub async fn execute_send(&mut self, to: &str, value_str: &str) {
+        let Some(passphrase) = &self.passphrase else {
+            self.action = ActionMode::Result {
+                message: "No passphrase set".to_string(),
+                success: false,
+            };
+            return;
+        };
+
+        let path = std::path::Path::new(&self.keystore_path);
+        let keypair = match pq_wallet_core::Keystore::load(path, passphrase) {
+            Ok(kp) => kp,
+            Err(e) => {
+                self.action = ActionMode::Result {
+                    message: format!("Keystore error: {e}"),
+                    success: false,
+                };
+                return;
+            }
+        };
+
+        let value: u128 = value_str.parse().unwrap_or(0);
+        let to_clean = to.strip_prefix("0x").unwrap_or(to);
+        let to_bytes = match hex::decode(to_clean) {
+            Ok(b) if b.len() == 20 => b,
+            _ => {
+                self.action = ActionMode::Result {
+                    message: "Invalid address (must be 20 bytes hex)".to_string(),
+                    success: false,
+                };
+                return;
+            }
+        };
+        let to_addr = alloy_primitives::Address::from_slice(&to_bytes);
+
+        let chain_id = self.chain_id;
+        let nonce = match self.rpc.get_nonce(keypair.address()).await {
+            Ok(n) => n,
+            Err(e) => {
+                self.action = ActionMode::Result {
+                    message: format!("Nonce fetch failed: {e}"),
+                    success: false,
+                };
+                return;
+            }
+        };
+        let gas_price = self.gas_price.max(1_000_000_000); // min 1 Gwei
+
+        let tx = pq_wallet_core::tx::PqTxRequest {
+            chain_id,
+            nonce,
+            to: Some(to_addr),
+            value,
+            gas_limit: 21000,
+            gas_price,
+            input: vec![],
+        };
+
+        let signer = pq_wallet_core::PqSigner::new(&keypair);
+        let signed = signer.sign(tx);
+        let raw_hex = format!("0x{}", hex::encode(signed.encode()));
+
+        match self.rpc.send_raw_transaction(&raw_hex).await {
+            Ok(hash) => {
+                self.action = ActionMode::Result {
+                    message: format!("Tx sent! Hash: {hash}"),
+                    success: true,
+                };
+            }
+            Err(e) => {
+                self.action = ActionMode::Result {
+                    message: format!("Broadcast failed: {e}"),
+                    success: false,
+                };
+            }
+        }
+    }
+
+    /// Execute a contract deployment.
+    pub async fn execute_deploy(&mut self, code: &str, gas_limit_str: &str) {
+        let Some(passphrase) = &self.passphrase else {
+            self.action = ActionMode::Result {
+                message: "No passphrase set".to_string(),
+                success: false,
+            };
+            return;
+        };
+
+        let path = std::path::Path::new(&self.keystore_path);
+        let keypair = match pq_wallet_core::Keystore::load(path, passphrase) {
+            Ok(kp) => kp,
+            Err(e) => {
+                self.action = ActionMode::Result {
+                    message: format!("Keystore error: {e}"),
+                    success: false,
+                };
+                return;
+            }
+        };
+
+        let code_clean = code.strip_prefix("0x").unwrap_or(code);
+        let input = match hex::decode(code_clean) {
+            Ok(b) => b,
+            Err(_) => {
+                self.action = ActionMode::Result {
+                    message: "Invalid hex in contract code".to_string(),
+                    success: false,
+                };
+                return;
+            }
+        };
+
+        let gas_limit: u64 = gas_limit_str.parse().unwrap_or(1_000_000);
+        let chain_id = self.chain_id;
+        let nonce = match self.rpc.get_nonce(keypair.address()).await {
+            Ok(n) => n,
+            Err(e) => {
+                self.action = ActionMode::Result {
+                    message: format!("Nonce fetch failed: {e}"),
+                    success: false,
+                };
+                return;
+            }
+        };
+        let gas_price = self.gas_price.max(1_000_000_000);
+
+        let tx = pq_wallet_core::tx::PqTxRequest {
+            chain_id,
+            nonce,
+            to: None,
+            value: 0,
+            gas_limit,
+            gas_price,
+            input,
+        };
+
+        let signer = pq_wallet_core::PqSigner::new(&keypair);
+        let signed = signer.sign(tx);
+        let raw_hex = format!("0x{}", hex::encode(signed.encode()));
+
+        match self.rpc.send_raw_transaction(&raw_hex).await {
+            Ok(hash) => {
+                self.action = ActionMode::Result {
+                    message: format!("Deploy tx sent! Hash: {hash}"),
+                    success: true,
+                };
+            }
+            Err(e) => {
+                self.action = ActionMode::Result {
+                    message: format!("Deploy failed: {e}"),
+                    success: false,
+                };
+            }
+        }
+    }
+
+    /// Execute a read-only contract call.
+    pub async fn execute_call(&mut self, to: &str, data: &str) {
+        let to_formatted = format!("0x{}", to.strip_prefix("0x").unwrap_or(to));
+        let data_formatted = format!("0x{}", data.strip_prefix("0x").unwrap_or(data));
+        let from = self.address.map(|a| format!("{a:?}"));
+
+        match self.rpc.eth_call(from.as_deref(), &to_formatted, &data_formatted).await {
+            Ok(result) => {
+                self.action = ActionMode::Result {
+                    message: format!("Result: {result}"),
+                    success: true,
+                };
+            }
+            Err(e) => {
+                self.action = ActionMode::Result {
+                    message: format!("Call failed: {e}"),
+                    success: false,
+                };
+            }
+        }
     }
 }
 

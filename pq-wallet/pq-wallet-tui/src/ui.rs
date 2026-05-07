@@ -4,11 +4,11 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Tabs},
+    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, Tabs},
     Frame,
 };
 
-use crate::app::{App, Tab};
+use crate::app::{ActionMode, App, Tab};
 
 /// Render the full UI.
 pub fn draw(f: &mut Frame, app: &App) {
@@ -31,6 +31,13 @@ pub fn draw(f: &mut Frame, app: &App) {
     }
 
     draw_status_bar(f, app, chunks[2]);
+
+    // ─── Overlays (drawn on top) ───
+    if app.asking_passphrase {
+        draw_passphrase_overlay(f, app);
+    } else if app.action != ActionMode::None {
+        draw_action_overlay(f, app);
+    }
 }
 
 fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
@@ -229,7 +236,16 @@ fn draw_transactions_tab(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let header_cells = ["Hash", "Block", "To", "Value", "Gas", "Type", "Status"]
+    // Split: table on top, detail on bottom
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(8),     // tx list
+            Constraint::Length(12), // tx detail
+        ])
+        .split(area);
+
+    let header_cells = ["Hash", "Block", "Kind", "To/Contract", "Value", "Type"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
     let header = Row::new(header_cells).height(1);
@@ -247,27 +263,36 @@ fn draw_transactions_tab(f: &mut Frame, app: &App, area: Rect) {
             tx.hash.clone()
         };
 
-        let to_short = tx.to.as_ref().map(|t| {
-            if t.len() > 14 {
-                format!("{}..{}", &t[..8], &t[t.len() - 4..])
-            } else {
-                t.clone()
+        let kind = match tx.kind() {
+            crate::app::TxKind::Transfer => "TRANSFER",
+            crate::app::TxKind::Deploy => "DEPLOY",
+            crate::app::TxKind::ContractCall => "CALL",
+        };
+
+        let to_display = match tx.kind() {
+            crate::app::TxKind::Deploy => {
+                tx.contract_address.as_ref().map(|a| {
+                    if a.len() > 14 { format!("→{}..{}", &a[..8], &a[a.len()-4..]) }
+                    else { format!("→{a}") }
+                }).unwrap_or_else(|| "CREATING...".to_string())
             }
-        }).unwrap_or_else(|| "CREATE".to_string());
+            _ => {
+                tx.to.as_ref().map(|t| {
+                    if t.len() > 14 { format!("{}..{}", &t[..8], &t[t.len()-4..]) }
+                    else { t.clone() }
+                }).unwrap_or_else(|| "—".to_string())
+            }
+        };
 
-        let status_str = if tx.status == "0x1" { "OK" } else { "FAIL" };
-
-        // Convert hex value to human-readable qETH
         let value_display = format_value_qeth(&tx.value_wei);
 
         Row::new(vec![
             Cell::from(hash_short),
             Cell::from(tx.block.clone()),
-            Cell::from(to_short),
+            Cell::from(kind),
+            Cell::from(to_display),
             Cell::from(value_display),
-            Cell::from(tx.gas_used.clone()),
             Cell::from(tx.tx_type.clone()),
-            Cell::from(status_str),
         ])
         .style(style)
     });
@@ -277,17 +302,94 @@ fn draw_transactions_tab(f: &mut Frame, app: &App, area: Rect) {
         [
             Constraint::Length(14),
             Constraint::Length(8),
-            Constraint::Length(14),
+            Constraint::Length(10),
+            Constraint::Length(16),
             Constraint::Min(12),
-            Constraint::Length(8),
-            Constraint::Length(6),
             Constraint::Length(6),
         ],
     )
     .header(header)
     .block(Block::default().borders(Borders::ALL).title(" Transactions (PQ type 0x50) "));
 
-    f.render_widget(table, area);
+    f.render_widget(table, chunks[0]);
+
+    // ─── Tx detail panel ───
+    if let Some(tx) = app.transactions.get(app.tx_selected) {
+        let kind_str = match tx.kind() {
+            crate::app::TxKind::Transfer => "Value Transfer",
+            crate::app::TxKind::Deploy => "Contract Deployment",
+            crate::app::TxKind::ContractCall => "Contract Call",
+        };
+        let kind_color = match tx.kind() {
+            crate::app::TxKind::Transfer => Color::Green,
+            crate::app::TxKind::Deploy => Color::Magenta,
+            crate::app::TxKind::ContractCall => Color::Yellow,
+        };
+
+        let mut detail = vec![
+            Line::from(vec![
+                Span::styled("  Kind:       ", Style::default().fg(Color::DarkGray)),
+                Span::styled(kind_str, Style::default().fg(kind_color).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(vec![
+                Span::styled("  Hash:       ", Style::default().fg(Color::DarkGray)),
+                Span::styled(&tx.hash, Style::default().fg(Color::Cyan)),
+            ]),
+            Line::from(vec![
+                Span::styled("  From:       ", Style::default().fg(Color::DarkGray)),
+                Span::styled(&tx.from, Style::default().fg(Color::White)),
+            ]),
+        ];
+
+        // To / Contract address
+        match tx.kind() {
+            crate::app::TxKind::Deploy => {
+                if let Some(ref addr) = tx.contract_address {
+                    detail.push(Line::from(vec![
+                        Span::styled("  Contract:   ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(addr, Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                    ]));
+                }
+                detail.push(Line::from(vec![
+                    Span::styled("  Init code:  ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(format!("{} bytes", tx.calldata_size()), Style::default().fg(Color::White)),
+                ]));
+            }
+            crate::app::TxKind::ContractCall => {
+                detail.push(Line::from(vec![
+                    Span::styled("  To:         ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(tx.to.as_deref().unwrap_or("—"), Style::default().fg(Color::White)),
+                ]));
+                if let Some(selector) = tx.function_selector() {
+                    detail.push(Line::from(vec![
+                        Span::styled("  Selector:   ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(selector, Style::default().fg(Color::Yellow)),
+                        Span::styled(format!("  ({} bytes calldata)", tx.calldata_size()), Style::default().fg(Color::DarkGray)),
+                    ]));
+                }
+            }
+            crate::app::TxKind::Transfer => {
+                detail.push(Line::from(vec![
+                    Span::styled("  To:         ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(tx.to.as_deref().unwrap_or("—"), Style::default().fg(Color::White)),
+                ]));
+            }
+        }
+
+        detail.push(Line::from(vec![
+            Span::styled("  Value:      ", Style::default().fg(Color::DarkGray)),
+            Span::styled(format_value_qeth(&tx.value_wei), Style::default().fg(Color::Green)),
+            Span::styled(format!("  ({})", tx.value_wei), Style::default().fg(Color::DarkGray)),
+        ]));
+        detail.push(Line::from(vec![
+            Span::styled("  Sig size:   ", Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("{} bytes (ML-DSA-65)", tx.sig_size), Style::default().fg(Color::Magenta)),
+        ]));
+
+        let detail_widget = Paragraph::new(detail)
+            .block(Block::default().borders(Borders::ALL).title(" Tx Detail (↑/↓ to navigate) "));
+        f.render_widget(detail_widget, chunks[1]);
+    }
 }
 
 fn draw_blocks_tab(f: &mut Frame, app: &App, area: Rect) {
@@ -497,7 +599,13 @@ fn draw_network_tab(f: &mut Frame, app: &App, area: Rect) {
 fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let status = Line::from(vec![
         Span::styled(" ←/→ ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        Span::styled("Switch tab  ", Style::default().fg(Color::DarkGray)),
+        Span::styled("Tab  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(" s ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        Span::styled("Send  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(" d ", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+        Span::styled("Deploy  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(" c ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled("Call  ", Style::default().fg(Color::DarkGray)),
         Span::styled(" r ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
         Span::styled("Refresh  ", Style::default().fg(Color::DarkGray)),
         Span::styled(" q ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
@@ -572,5 +680,267 @@ fn format_value_qeth(hex_val: &str) -> String {
         // Show in Gwei for small amounts
         let gwei = wei as f64 / 1e9;
         format!("{gwei:.2} Gwei")
+    }
+}
+
+// ─── Overlays ────────────────────────────────────────────────────────────────
+
+/// Calculate a centered rect of given width/height within `area`.
+fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
+    let x = area.x + area.width.saturating_sub(width) / 2;
+    let y = area.y + area.height.saturating_sub(height) / 2;
+    Rect::new(x, y, width.min(area.width), height.min(area.height))
+}
+
+/// Draw the passphrase input overlay.
+fn draw_passphrase_overlay(f: &mut Frame, app: &App) {
+    let area = centered_rect(60, 7, f.area());
+    f.render_widget(Clear, area);
+
+    let masked: String = "*".repeat(app.passphrase_input.len());
+    let lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "  Enter keystore passphrase:",
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  > ", Style::default().fg(Color::Cyan)),
+            Span::styled(masked, Style::default().fg(Color::Green)),
+            Span::styled("█", Style::default().fg(Color::White)),
+        ]),
+        Line::from(Span::styled(
+            "  [Enter] Confirm  [Esc] Cancel",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
+
+    let popup = Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow))
+            .title(" Passphrase "),
+    );
+    f.render_widget(popup, area);
+}
+
+/// Draw the action input overlay (Send / Deploy / Call / Result).
+fn draw_action_overlay(f: &mut Frame, app: &App) {
+    match &app.action {
+        ActionMode::Send { field, to, value } => {
+            let area = centered_rect(70, 10, f.area());
+            f.render_widget(Clear, area);
+
+            let lines = vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    "  Send qETH Transfer",
+                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                )),
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled("  To:    ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        to.as_str(),
+                        if *field == 0 {
+                            Style::default().fg(Color::White)
+                        } else {
+                            Style::default().fg(Color::DarkGray)
+                        },
+                    ),
+                    if *field == 0 {
+                        Span::styled("█", Style::default().fg(Color::White))
+                    } else {
+                        Span::raw("")
+                    },
+                ]),
+                Line::from(vec![
+                    Span::styled("  Value: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        value.as_str(),
+                        if *field == 1 {
+                            Style::default().fg(Color::White)
+                        } else {
+                            Style::default().fg(Color::DarkGray)
+                        },
+                    ),
+                    if *field == 1 {
+                        Span::styled("█", Style::default().fg(Color::White))
+                    } else {
+                        Span::raw("")
+                    },
+                    Span::styled(" wei", Style::default().fg(Color::DarkGray)),
+                ]),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "  [Enter] Next/Submit  [Esc] Cancel",
+                    Style::default().fg(Color::DarkGray),
+                )),
+            ];
+
+            let popup = Paragraph::new(lines).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Green))
+                    .title(" Send Transfer "),
+            );
+            f.render_widget(popup, area);
+        }
+        ActionMode::Deploy { field, code, gas_limit } => {
+            let area = centered_rect(70, 10, f.area());
+            f.render_widget(Clear, area);
+
+            let code_display = if code.len() > 40 {
+                format!("{}...({} bytes)", &code[..40], code.len() / 2)
+            } else {
+                code.clone()
+            };
+
+            let lines = vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    "  Deploy Contract",
+                    Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+                )),
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled("  Code:  ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        code_display,
+                        if *field == 0 {
+                            Style::default().fg(Color::White)
+                        } else {
+                            Style::default().fg(Color::DarkGray)
+                        },
+                    ),
+                    if *field == 0 {
+                        Span::styled("█", Style::default().fg(Color::White))
+                    } else {
+                        Span::raw("")
+                    },
+                ]),
+                Line::from(vec![
+                    Span::styled("  Gas:   ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        gas_limit.as_str(),
+                        if *field == 1 {
+                            Style::default().fg(Color::White)
+                        } else {
+                            Style::default().fg(Color::DarkGray)
+                        },
+                    ),
+                    if *field == 1 {
+                        Span::styled("█", Style::default().fg(Color::White))
+                    } else {
+                        Span::raw("")
+                    },
+                ]),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "  [Enter] Next/Submit  [Esc] Cancel",
+                    Style::default().fg(Color::DarkGray),
+                )),
+            ];
+
+            let popup = Paragraph::new(lines).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Magenta))
+                    .title(" Deploy Contract "),
+            );
+            f.render_widget(popup, area);
+        }
+        ActionMode::Call { field, to, data } => {
+            let area = centered_rect(70, 10, f.area());
+            f.render_widget(Clear, area);
+
+            let lines = vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    "  Contract Call (read-only)",
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                )),
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled("  To:    ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        to.as_str(),
+                        if *field == 0 {
+                            Style::default().fg(Color::White)
+                        } else {
+                            Style::default().fg(Color::DarkGray)
+                        },
+                    ),
+                    if *field == 0 {
+                        Span::styled("█", Style::default().fg(Color::White))
+                    } else {
+                        Span::raw("")
+                    },
+                ]),
+                Line::from(vec![
+                    Span::styled("  Data:  ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        data.as_str(),
+                        if *field == 1 {
+                            Style::default().fg(Color::White)
+                        } else {
+                            Style::default().fg(Color::DarkGray)
+                        },
+                    ),
+                    if *field == 1 {
+                        Span::styled("█", Style::default().fg(Color::White))
+                    } else {
+                        Span::raw("")
+                    },
+                ]),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "  [Enter] Next/Submit  [Esc] Cancel",
+                    Style::default().fg(Color::DarkGray),
+                )),
+            ];
+
+            let popup = Paragraph::new(lines).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow))
+                    .title(" Call Contract "),
+            );
+            f.render_widget(popup, area);
+        }
+        ActionMode::Result { message, success } => {
+            let area = centered_rect(70, 7, f.area());
+            f.render_widget(Clear, area);
+
+            let (icon, color) = if *success {
+                ("✓", Color::Green)
+            } else {
+                ("✗", Color::Red)
+            };
+
+            let lines = vec![
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled(format!("  {icon} "), Style::default().fg(color).add_modifier(Modifier::BOLD)),
+                    Span::styled(message.as_str(), Style::default().fg(Color::White)),
+                ]),
+                Line::from(""),
+                Line::from(Span::styled(
+                    "  Press any key to dismiss",
+                    Style::default().fg(Color::DarkGray),
+                )),
+            ];
+
+            let title = if *success { " Success " } else { " Error " };
+            let popup = Paragraph::new(lines).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(color))
+                    .title(title),
+            );
+            f.render_widget(popup, area);
+        }
+        ActionMode::None => {}
     }
 }

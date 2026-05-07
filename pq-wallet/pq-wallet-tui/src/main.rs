@@ -19,7 +19,7 @@ use crossterm::{
 use ratatui::prelude::*;
 use ratatui::Terminal;
 
-use app::App;
+use app::{App, PendingExec};
 use events::TICK_RATE;
 
 fn main() -> Result<()> {
@@ -53,7 +53,10 @@ fn main() -> Result<()> {
         println!();
         println!("KEYS:");
         println!("  ←/→ or Tab   Switch between panels");
-        println!("  ↑/↓ or j/k   Navigate transaction list");
+        println!("  ↑/↓ or j/k   Navigate transaction/block list");
+        println!("  s            Send qETH transfer");
+        println!("  d            Deploy contract");
+        println!("  c            Call contract (read-only)");
         println!("  r            Refresh data");
         println!("  q            Quit");
         return Ok(());
@@ -107,11 +110,24 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
         if event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {
-                    // 'r' triggers manual refresh
-                    if key.code == crossterm::event::KeyCode::Char('r') {
+                    let should_refresh = events::handle_key(app, key);
+
+                    // Execute pending action if any
+                    if let Some(exec) = app.pending_exec.take() {
+                        match exec {
+                            PendingExec::Send { to, value } => {
+                                rt.block_on(app.execute_send(&to, &value));
+                            }
+                            PendingExec::Deploy { code, gas_limit } => {
+                                rt.block_on(app.execute_deploy(&code, &gas_limit));
+                            }
+                            PendingExec::Call { to, data } => {
+                                rt.block_on(app.execute_call(&to, &data));
+                            }
+                        }
+                    } else if should_refresh {
                         rt.block_on(app.refresh());
                     }
-                    events::handle_key(app, key);
                 }
             }
         }
