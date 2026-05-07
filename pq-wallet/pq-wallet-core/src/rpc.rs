@@ -27,7 +27,14 @@ struct RpcRequest<'a> {
 
 #[derive(Debug, Deserialize)]
 struct RpcResponse {
-    result: Option<Value>,
+    /// The result value.  We use `Value` (not `Option<Value>`) because serde
+    /// deserializes JSON `null` into `None` for `Option<Value>`, making it
+    /// impossible to distinguish "field absent" from "result: null".
+    /// With `#[serde(default)]` a missing field becomes `Value::Null`, and
+    /// `"result": null` also becomes `Value::Null` — callers that accept
+    /// nullable results (receipts, blocks) already check `is_null()`.
+    #[serde(default)]
+    result: Value,
     error: Option<RpcErrorObj>,
 }
 
@@ -154,6 +161,24 @@ impl RpcClient {
         Ok(Some(result))
     }
 
+    /// Get a block by tag (`"latest"`, `"earliest"`, `"pending"`).
+    pub async fn get_block_by_tag(&self, tag: &str) -> Result<Option<Value>, WalletError> {
+        let result = self.call("eth_getBlockByNumber", json!([tag, true])).await?;
+        if result.is_null() {
+            return Ok(None);
+        }
+        Ok(Some(result))
+    }
+
+    /// Get a block by hash (with full transaction objects).
+    pub async fn get_block_by_hash(&self, hash: &str) -> Result<Option<Value>, WalletError> {
+        let result = self.call("eth_getBlockByHash", json!([hash, true])).await?;
+        if result.is_null() {
+            return Ok(None);
+        }
+        Ok(Some(result))
+    }
+
     // ── Internal ──────────────────────────────────────────────────────────────
 
     async fn call(&self, method: &str, params: Value) -> Result<Value, WalletError> {
@@ -164,7 +189,7 @@ impl RpcClient {
             return Err(WalletError::RpcError { code: err.code, message: err.message });
         }
 
-        resp.result.ok_or_else(|| WalletError::RpcParse("missing result field".into()))
+        Ok(resp.result)
     }
 }
 

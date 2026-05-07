@@ -1,40 +1,62 @@
-//! PoA consensus validation scenarios.
+//! `PoA` consensus validation scenarios.
 
 use super::runner::{TestResult, TestRunner};
+
+/// Fetch recent blocks by walking backwards from "latest" via `parentHash`.
+/// Returns up to `count` blocks (newest first).
+async fn fetch_recent_blocks(
+    rpc: &pq_wallet_core::RpcClient,
+    count: usize,
+) -> Vec<serde_json::Value> {
+    let mut blocks = Vec::new();
+
+    // Start from "latest"
+    let Some(block) = rpc.get_block_by_tag("latest").await.ok().flatten() else {
+        return blocks;
+    };
+    blocks.push(block);
+
+    // Walk backwards via parentHash
+    while blocks.len() < count {
+        let parent_hash = blocks
+            .last()
+            .and_then(|b| b.get("parentHash"))
+            .and_then(|v| v.as_str());
+
+        let Some(hash) = parent_hash else { break };
+
+        // Stop at genesis (all-zero hash)
+        if hash == "0x0000000000000000000000000000000000000000000000000000000000000000" {
+            break;
+        }
+
+        match rpc.get_block_by_hash(hash).await {
+            Ok(Some(block)) => blocks.push(block),
+            _ => break,
+        }
+    }
+
+    blocks
+}
 
 /// Verify that different blocks are mined by different validators (rotation).
 pub async fn test_validator_rotation(runner: &mut TestRunner) {
     let rpc = runner.primary_rpc();
 
-    let current_block = match rpc.block_number().await {
-        Ok(b) => b,
-        Err(e) => {
-            runner.record(TestResult::fail(
-                "Validator rotation",
-                format!("Cannot get block number: {e}"),
-            ));
-            return;
-        }
-    };
+    let blocks = fetch_recent_blocks(&rpc, 10).await;
 
-    if current_block < 3 {
-        runner.record(TestResult::pass(
+    if blocks.is_empty() {
+        runner.record(TestResult::fail(
             "Validator rotation",
-            format!("Only {current_block} blocks — not enough to verify rotation (need ≥3)"),
+            "Could not fetch any blocks",
         ));
         return;
     }
 
-    // Fetch last N blocks and check miners
     let mut miners = std::collections::HashSet::new();
-    let check_count = current_block.min(10);
-    let start = current_block.saturating_sub(check_count - 1);
-
-    for block_num in start..=current_block {
-        if let Ok(Some(block)) = rpc.get_block_by_number(block_num).await {
-            if let Some(miner) = block.get("miner").and_then(|v| v.as_str()) {
-                miners.insert(miner.to_lowercase());
-            }
+    for block in &blocks {
+        if let Some(miner) = block.get("miner").and_then(|v| v.as_str()) {
+            miners.insert(miner.to_lowercase());
         }
     }
 
@@ -42,14 +64,12 @@ pub async fn test_validator_rotation(runner: &mut TestRunner) {
         runner.record(TestResult::pass(
             "Validator rotation",
             format!(
-                "{} distinct validators found in last {} blocks: {:?}",
+                "{} distinct validators found in last {} blocks",
                 miners.len(),
-                check_count,
-                miners
+                blocks.len(),
             ),
         ));
     } else if miners.len() == 1 {
-        // In dev mode with a single validator, this is expected
         let miner = miners.iter().next().unwrap();
         runner.record(TestResult::pass(
             "Validator rotation",
@@ -67,41 +87,20 @@ pub async fn test_validator_rotation(runner: &mut TestRunner) {
 pub async fn test_block_timestamps(runner: &mut TestRunner) {
     let rpc = runner.primary_rpc();
 
-    let current_block = match rpc.block_number().await {
-        Ok(b) => b,
-        Err(e) => {
-            runner.record(TestResult::fail(
-                "Block timestamps monotonic",
-                format!("Cannot get block number: {e}"),
-            ));
-            return;
-        }
-    };
+    let blocks = fetch_recent_blocks(&rpc, 5).await;
 
-    if current_block < 2 {
-        runner.record(TestResult::pass(
-            "Block timestamps monotonic",
-            "Not enough blocks to check timestamps",
-        ));
-        return;
-    }
-
-    let mut timestamps: Vec<u64> = Vec::new();
-    let check_count = current_block.min(5);
-    let start = current_block.saturating_sub(check_count - 1);
-
-    for block_num in start..=current_block {
-        if let Ok(Some(block)) = rpc.get_block_by_number(block_num).await {
-            if let Some(ts) = block.get("timestamp").and_then(|v| v.as_str()) {
-                let ts_val = u64::from_str_radix(
-                    ts.strip_prefix("0x").unwrap_or(ts),
-                    16,
-                )
-                .unwrap_or(0);
-                timestamps.push(ts_val);
-            }
-        }
-    }
+    // Blocks are newest-first, reverse for chronological order
+    let timestamps: Vec<u64> = blocks
+        .iter()
+        .rev()
+        .filter_map(|b| {
+            b.get("timestamp")
+                .and_then(|v| v.as_str())
+                .and_then(|ts| {
+                    u64::from_str_radix(ts.strip_prefix("0x").unwrap_or(ts), 16).ok()
+                })
+        })
+        .collect();
 
     if timestamps.len() < 2 {
         runner.record(TestResult::fail(
