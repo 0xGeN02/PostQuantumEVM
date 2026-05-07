@@ -4,6 +4,7 @@ members = [
     "pq-wallet-cli",
     "pq-wallet-tui",
     "pq-e2e-test",
+    "pq-chain-seeder",
 ]
 resolver = "2"
 

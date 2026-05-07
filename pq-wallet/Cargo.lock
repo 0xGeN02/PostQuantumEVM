@@ -2070,6 +2070,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "pq-chain-seeder"
+version = "0.1.0"
+dependencies = [
+ "alloy-primitives",
+ "anyhow",
+ "clap",
+ "hex",
+ "pq-wallet-core",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "pq-e2e-test"
 version = "0.1.0"
 dependencies = [

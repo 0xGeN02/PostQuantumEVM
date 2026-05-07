@@ -10,7 +10,10 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy workspace (pq-reth contains the full reth fork + PQ crates)
+# Copy ml-lattice-rs first (dependency of pq-reth, referenced as ../ml-lattice-rs)
+COPY ml-lattice-rs/ ./ml-lattice-rs/
+
+# Copy pq-reth workspace
 COPY pq-reth/ ./pq-reth/
 
 # Build the pq-reth binary in release mode

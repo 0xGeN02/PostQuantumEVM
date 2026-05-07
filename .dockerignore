@@ -1,0 +1,30 @@
+# Compilation artifacts
+**/target/
+**/.git/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+**/.DS_Store
+
+# Node modules (qiskit-api)
+**/node_modules/
+
+# Docker volumes
+pq-validator-*-data/
+
+# Docs and non-essential
+*.md
+docs/
+e2e/
+
+# pq-wallet (not needed for node image)
+pq-wallet/
+
+# Contracts (not needed for node image)
+contracts/
+
+# Benchmarks
+benchmarks/

@@ -1,0 +1,18 @@
+[package]
+name = "pq-chain-seeder"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "pq-seed"
+path = "src/main.rs"
+
+[dependencies]
+pq-wallet-core.workspace = true
+alloy-primitives.workspace = true
+tokio.workspace = true
+clap = { version = "4", features = ["derive", "color", "env"] }
+serde_json.workspace = true
+hex.workspace = true
+anyhow.workspace = true
