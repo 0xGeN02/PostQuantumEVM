@@ -113,6 +113,8 @@ pub struct BlockRecord {
     pub tx_count: usize,
     pub base_fee: u128,
     pub miner: String,
+    /// Raw `extraData` hex string from the block header (contains ML-DSA-65 seal).
+    pub extra_data: String,
 }
 
 /// Interactive action mode (overlay prompts).
@@ -194,14 +196,40 @@ pub struct App {
     // ─── Transactions ───
     pub transactions: Vec<TxRecord>,
     pub tx_selected: usize,
+    pub tx_table_state: ratatui::widgets::TableState,
 
     // ─── Blocks ───
     pub blocks: Vec<BlockRecord>,
     pub block_selected: usize,
+    pub block_table_state: ratatui::widgets::TableState,
+    /// Block range pagination: the highest block number currently displayed.
+    /// `None` means "follow chain tip" (latest).
+    pub block_page_end: Option<u64>,
+
+    // ─── Search ───
+    pub search_mode: bool,
+    pub search_input: String,
+    pub search_error: Option<String>,
+
+    // ─── Address viewer ───
+    pub address_lookup: Option<AddressInfo>,
+    pub address_input: String,
+    pub showing_address_viewer: bool,
 
     // ─── Internal ───
     pub rpc: RpcClient,
     pub tick_count: u64,
+}
+
+/// Information about a looked-up address.
+#[derive(Debug, Clone)]
+pub struct AddressInfo {
+    pub address: String,
+    pub balance_wei: u128,
+    pub nonce: u64,
+    /// Whether this is a contract (has code). Currently always false
+    /// until eth_getCode is added to RpcClient.
+    pub is_contract: bool,
 }
 
 impl App {
@@ -238,9 +266,20 @@ impl App {
 
             transactions: Vec::new(),
             tx_selected: 0,
+            tx_table_state: ratatui::widgets::TableState::default(),
 
             blocks: Vec::new(),
             block_selected: 0,
+            block_table_state: ratatui::widgets::TableState::default(),
+            block_page_end: None,
+
+            search_mode: false,
+            search_input: String::new(),
+            search_error: None,
+
+            address_lookup: None,
+            address_input: String::new(),
+            showing_address_viewer: false,
 
             rpc: RpcClient::new(&rpc_url),
             tick_count: 0,
@@ -363,8 +402,8 @@ impl App {
 
     /// Scan the last N blocks and store their metadata.
     async fn scan_recent_blocks(&mut self) {
-        let end_block = self.block_number;
-        let start_block = end_block.saturating_sub(29); // last 30 blocks
+        let end_block = self.block_page_end.unwrap_or(self.block_number);
+        let start_block = end_block.saturating_sub(29); // 30 blocks per page
 
         let mut blocks = Vec::new();
 
@@ -380,6 +419,7 @@ impl App {
             let gas_limit = parse_hex_u64_val(block.get("gasLimit"));
             let base_fee = parse_hex_u128_val(block.get("baseFeePerGas"));
             let miner = block.get("miner").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let extra_data = block.get("extraData").and_then(|v| v.as_str()).unwrap_or("0x").to_string();
             let tx_count = block
                 .get("transactions")
                 .and_then(|v| v.as_array())
@@ -395,10 +435,123 @@ impl App {
                 tx_count,
                 base_fee,
                 miner,
+                extra_data,
             });
         }
 
         self.blocks = blocks;
+    }
+
+    /// Load the previous page of blocks (older).
+    pub fn blocks_page_prev(&mut self) {
+        let current_end = self.block_page_end.unwrap_or(self.block_number);
+        let new_end = current_end.saturating_sub(30);
+        if new_end > 0 {
+            self.block_page_end = Some(new_end);
+            self.block_selected = 0;
+        }
+    }
+
+    /// Load the next page of blocks (newer) or jump to latest.
+    pub fn blocks_page_next(&mut self) {
+        if let Some(end) = self.block_page_end {
+            let new_end = end + 30;
+            if new_end >= self.block_number {
+                // Back to following the chain tip
+                self.block_page_end = None;
+            } else {
+                self.block_page_end = Some(new_end);
+            }
+            self.block_selected = 0;
+        }
+        // If already None (following tip), do nothing
+    }
+
+    /// Search for a block by number or hash. Returns true if refresh needed.
+    pub async fn search_block(&mut self, query: &str) -> bool {
+        let query = query.trim();
+
+        // Try as block number first
+        if let Ok(num) = query.parse::<u64>() {
+            if num <= self.block_number {
+                // Navigate to the page containing this block
+                // Set page_end so this block is visible
+                let page_end = ((num / 30) + 1) * 30;
+                self.block_page_end = Some(page_end.min(self.block_number));
+                self.active_tab = Tab::Blocks;
+                self.search_error = None;
+                return true;
+            } else {
+                self.search_error = Some(format!("Block #{num} does not exist yet (tip: #{})", self.block_number));
+                return false;
+            }
+        }
+
+        // Try as hex block number (0x...)
+        if query.starts_with("0x") || query.starts_with("0X") {
+            let hex_str = &query[2..];
+
+            // Could be a block hash (32 bytes = 64 hex chars)
+            if hex_str.len() == 64 {
+                if let Ok(Some(block)) = self.rpc.get_block_by_hash(query).await {
+                    let num = parse_hex_u64_val(block.get("number"));
+                    let page_end = ((num / 30) + 1) * 30;
+                    self.block_page_end = Some(page_end.min(self.block_number));
+                    self.active_tab = Tab::Blocks;
+                    self.search_error = None;
+                    return true;
+                } else {
+                    self.search_error = Some("Block hash not found".to_string());
+                    return false;
+                }
+            }
+
+            // Try as hex number
+            if let Ok(num) = u64::from_str_radix(hex_str, 16) {
+                if num <= self.block_number {
+                    let page_end = ((num / 30) + 1) * 30;
+                    self.block_page_end = Some(page_end.min(self.block_number));
+                    self.active_tab = Tab::Blocks;
+                    self.search_error = None;
+                    return true;
+                }
+            }
+        }
+
+        self.search_error = Some("Invalid search: enter block number or 0x-prefixed hash".to_string());
+        false
+    }
+
+    /// Look up an address and fetch its info.
+    pub async fn lookup_address(&mut self, addr_str: &str) {
+        let addr_clean = addr_str.strip_prefix("0x").unwrap_or(addr_str);
+        let addr_bytes = match hex::decode(addr_clean) {
+            Ok(b) if b.len() == 20 => b,
+            _ => {
+                self.address_lookup = Some(AddressInfo {
+                    address: addr_str.to_string(),
+                    balance_wei: 0,
+                    nonce: 0,
+                    is_contract: false,
+                });
+                return;
+            }
+        };
+
+        let addr = Address::from_slice(&addr_bytes);
+        let balance = self.rpc.get_balance(addr).await.unwrap_or(0);
+        let nonce = self.rpc.get_nonce(addr).await.unwrap_or(0);
+
+        // Check if address has code (is a contract)
+        // Note: would need eth_getCode in RpcClient for proper detection.
+        let is_contract = false;
+
+        self.address_lookup = Some(AddressInfo {
+            address: format!("{addr:?}"),
+            balance_wei: balance,
+            nonce,
+            is_contract,
+        });
     }
 
     /// Load wallet address from keystore (no passphrase needed).

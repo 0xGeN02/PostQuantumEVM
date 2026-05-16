@@ -12,6 +12,16 @@ pub const TICK_RATE: Duration = Duration::from_secs(3);
 /// Handle a key event, mutating the app state accordingly.
 /// Returns `true` if a manual refresh should be triggered.
 pub fn handle_key(app: &mut App, key: KeyEvent) -> bool {
+    // If we're in search mode, handle search input
+    if app.search_mode {
+        return handle_search_input(app, key);
+    }
+
+    // If we're in address viewer mode
+    if app.showing_address_viewer {
+        return handle_address_viewer_input(app, key);
+    }
+
     // If we're in action input mode, handle text input
     if app.asking_passphrase {
         return handle_passphrase_input(app, key);
@@ -34,6 +44,20 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> bool {
 
         // Refresh (manual)
         KeyCode::Char('r') => return true,
+
+        // ─── Search (/) ───
+        KeyCode::Char('/') => {
+            app.search_mode = true;
+            app.search_input.clear();
+            app.search_error = None;
+        }
+
+        // ─── Address viewer (a) ───
+        KeyCode::Char('a') => {
+            app.showing_address_viewer = true;
+            app.address_input.clear();
+            app.address_lookup = None;
+        }
 
         // ─── Action hotkeys ───
         // 's' = Send transfer
@@ -93,6 +117,82 @@ pub fn handle_key(app: &mut App, key: KeyEvent) -> bool {
             _ => {}
         },
 
+        // ─── Block pagination ───
+        // Home: jump to latest
+        KeyCode::Home if app.active_tab == Tab::Blocks => {
+            app.block_page_end = None;
+            app.block_selected = 0;
+            return true;
+        }
+        // PgUp / '[': older blocks
+        KeyCode::PageUp | KeyCode::Char('[') if app.active_tab == Tab::Blocks => {
+            app.blocks_page_prev();
+            return true;
+        }
+        // PgDn / ']': newer blocks
+        KeyCode::PageDown | KeyCode::Char(']') if app.active_tab == Tab::Blocks => {
+            app.blocks_page_next();
+            return true;
+        }
+
+        _ => {}
+    }
+    false
+}
+
+fn handle_search_input(app: &mut App, key: KeyEvent) -> bool {
+    match key.code {
+        KeyCode::Esc => {
+            app.search_mode = false;
+            app.search_input.clear();
+            app.search_error = None;
+        }
+        KeyCode::Enter => {
+            // We can't call async here, so store the query for the main loop
+            // to handle. We use pending_exec-like pattern.
+            // For simplicity, mark search_mode = false and return true to trigger refresh
+            // The main loop will call search_block.
+            app.search_mode = false;
+            return true; // signal that a search-triggered refresh is needed
+        }
+        KeyCode::Backspace => {
+            app.search_input.pop();
+            app.search_error = None;
+        }
+        KeyCode::Char(c) => {
+            app.search_input.push(c);
+            app.search_error = None;
+        }
+        _ => {}
+    }
+    false
+}
+
+fn handle_address_viewer_input(app: &mut App, key: KeyEvent) -> bool {
+    // If we have a result, any key dismisses it
+    if app.address_lookup.is_some() {
+        app.showing_address_viewer = false;
+        app.address_lookup = None;
+        app.address_input.clear();
+        return false;
+    }
+
+    match key.code {
+        KeyCode::Esc => {
+            app.showing_address_viewer = false;
+            app.address_input.clear();
+        }
+        KeyCode::Enter => {
+            // Signal main loop to perform the address lookup
+            app.showing_address_viewer = true;
+            return true; // trigger async address lookup
+        }
+        KeyCode::Backspace => {
+            app.address_input.pop();
+        }
+        KeyCode::Char(c) => {
+            app.address_input.push(c);
+        }
         _ => {}
     }
     false
