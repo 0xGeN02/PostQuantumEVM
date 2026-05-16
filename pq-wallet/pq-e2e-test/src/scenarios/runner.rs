@@ -34,6 +34,8 @@ pub struct TestRunner {
     pub verbose: bool,
     pub wait_secs: u64,
     pub results: Vec<TestResult>,
+    /// Hash of the last sent transaction (shared between test phases).
+    pub last_tx_hash: Option<String>,
 }
 
 impl TestRunner {
@@ -53,6 +55,7 @@ impl TestRunner {
             verbose,
             wait_secs,
             results: Vec::new(),
+            last_tx_hash: None,
         }
     }
 

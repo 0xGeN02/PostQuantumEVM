@@ -2,13 +2,29 @@
 
 use std::path::Path;
 
-use pq_wallet_core::{Keystore, PqSigner, PqTxRequest};
+use pq_wallet_core::{Keystore, PqSigner, PqTxRequest, RpcClient};
 
 use super::runner::{TestResult, TestRunner};
 
 /// Simple init code: returns 0x42 from constructor (becomes contract code = "42" byte).
-/// What matters for testing: to=None triggers creation, receipt has contractAddress.
+/// What matters for testing: to=None triggers creation, receipt has `contractAddress`.
 const SIMPLE_INIT_CODE: &str = "604260005260206000f3";
+
+/// Helper: wait for a tx receipt with polling (up to ~16s).
+async fn wait_for_receipt(
+    rpc: &RpcClient,
+    tx_hash: &str,
+) -> Result<pq_wallet_core::TxReceipt, String> {
+    for _ in 0..8 {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        match rpc.get_transaction_receipt(tx_hash).await {
+            Ok(Some(r)) => return Ok(r),
+            Ok(None) => continue,
+            Err(e) => return Err(format!("receipt RPC error: {e}")),
+        }
+    }
+    Err(format!("receipt still null after 16s — tx may be stuck: {tx_hash}"))
+}
 
 /// Deploy a contract and verify the receipt.
 pub async fn test_deploy_contract(runner: &mut TestRunner) {
@@ -84,12 +100,9 @@ pub async fn test_deploy_contract(runner: &mut TestRunner) {
         }
     };
 
-    // Wait for mining
-    tokio::time::sleep(std::time::Duration::from_secs(6)).await;
-
-    // Check receipt
-    match rpc.get_transaction_receipt(&tx_hash).await {
-        Ok(Some(receipt)) => {
+    // Wait for mining with polling
+    match wait_for_receipt(&rpc, &tx_hash).await {
+        Ok(receipt) => {
             let success = receipt.status == "0x1";
             if let Some(ref addr) = receipt.contract_address {
                 if success {
@@ -104,10 +117,11 @@ pub async fn test_deploy_contract(runner: &mut TestRunner) {
                     ));
                 }
             } else if success {
-                // Success but no contract address — might be runtime returned empty
                 runner.record(TestResult::pass(
                     "Deploy contract",
-                    format!("status=success, contractAddress=null (empty runtime), hash={tx_hash}"),
+                    format!(
+                        "status=success, contractAddress=null (empty runtime), hash={tx_hash}"
+                    ),
                 ));
             } else {
                 runner.record(TestResult::fail(
@@ -116,27 +130,17 @@ pub async fn test_deploy_contract(runner: &mut TestRunner) {
                 ));
             }
         }
-        Ok(None) => {
-            runner.record(TestResult::fail(
-                "Deploy contract",
-                format!("receipt null — tx may still be pending: {tx_hash}"),
-            ));
-        }
         Err(e) => {
-            runner.record(TestResult::fail(
-                "Deploy contract",
-                format!("receipt error: {e}"),
-            ));
+            runner.record(TestResult::fail("Deploy contract", e));
         }
     }
 }
 
-/// Call a contract via eth_call (read-only).
-/// Uses a genesis-known contract or the one we just deployed.
+/// Call a contract via `eth_call` (read-only).
+/// Deploys a fresh contract, then calls it.
 pub async fn test_call_contract(runner: &mut TestRunner) {
     let rpc = runner.primary_rpc();
 
-    // Deploy a new contract for the call test
     let path_str = match runner.keystore_path.as_deref() {
         Some(p) => p,
         None => {
@@ -187,17 +191,25 @@ pub async fn test_call_contract(runner: &mut TestRunner) {
     };
 
     // Deploy a contract that always returns 0x42 (32-byte padded)
-    // Init code: stores 0x42 at memory[31], returns 32 bytes from memory[0]
-    // PUSH1 0x42, PUSH1 0x1f, MSTORE8, PUSH1 0x20, PUSH1 0x00, RETURN
-    // Then wrap in init: PUSH1 len, DUP1, PUSH1 offset, PUSH1 0, CODECOPY, PUSH1 0, RETURN
+    // Runtime (10 bytes): PUSH1 0x42, PUSH1 0x1f, MSTORE8, PUSH1 0x20, PUSH1 0x00, RETURN
+    // Init wraps runtime with CODECOPY + RETURN
     //
-    // Runtime (8 bytes): 6042601f5360206000f3
-    // Init (12 + 8 = 20 bytes): 6008 80 600c 6000 39 6000 f3 + runtime
-    let runtime_hex = "6042601f5360206000f3"; // 10 bytes actually
+    // Init wrapper layout (13 bytes):
+    //   PUSH1 <len>     2B     60 xx
+    //   DUP1            1B     80
+    //   PUSH1 <offset>  2B     60 0d   ← offset = 13 = size of init wrapper
+    //   PUSH1 0x00      2B     60 00
+    //   CODECOPY         1B     39
+    //   PUSH1 <len>     2B     60 xx
+    //   PUSH1 0x00      2B     60 00
+    //   RETURN          1B     f3
+    //                  ────
+    //                   13 bytes total → offset must be 0x0d
+    let runtime_hex = "6042601f5360206000f3";
     let runtime_len = runtime_hex.len() / 2;
+    let init_overhead: usize = 13; // 2+1+2+2+1+2+2+1
     let init_hex = format!(
-        "60{:02x}80600c60003960{:02x}6000f3{}",
-        runtime_len, runtime_len, runtime_hex
+        "60{runtime_len:02x}8060{init_overhead:02x}60003960{runtime_len:02x}6000f3{runtime_hex}",
     );
 
     let init_bytes = hex::decode(&init_hex).unwrap();
@@ -227,32 +239,22 @@ pub async fn test_call_contract(runner: &mut TestRunner) {
         }
     };
 
-    // Wait for mining
-    tokio::time::sleep(std::time::Duration::from_secs(6)).await;
+    // Wait for mining with polling
+    let receipt = match wait_for_receipt(&rpc, &tx_hash).await {
+        Ok(r) => r,
+        Err(e) => {
+            runner.record(TestResult::fail("Call contract (eth_call)", e));
+            return;
+        }
+    };
 
     // Get contract address from receipt
-    let contract_addr = match rpc.get_transaction_receipt(&tx_hash).await {
-        Ok(Some(receipt)) if receipt.contract_address.is_some() => {
-            receipt.contract_address.unwrap()
-        }
-        Ok(Some(_)) => {
+    let contract_addr = match receipt.contract_address {
+        Some(addr) => addr,
+        None => {
             runner.record(TestResult::fail(
                 "Call contract (eth_call)",
                 "deploy receipt has no contract address",
-            ));
-            return;
-        }
-        Ok(None) => {
-            runner.record(TestResult::fail(
-                "Call contract (eth_call)",
-                format!("deploy receipt null — still pending? hash={tx_hash}"),
-            ));
-            return;
-        }
-        Err(e) => {
-            runner.record(TestResult::fail(
-                "Call contract (eth_call)",
-                format!("receipt error: {e}"),
             ));
             return;
         }

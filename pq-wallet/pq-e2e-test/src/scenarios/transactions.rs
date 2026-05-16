@@ -13,7 +13,7 @@ fn load_keypair(runner: &TestRunner) -> Result<pq_wallet_core::PqKeypair, String
     Keystore::load(path, &runner.passphrase).map_err(|e| format!("{e}"))
 }
 
-/// Send a simple value transfer and verify it gets mined.
+/// Send a simple value transfer, wait for mining, and store hash for receipt test.
 pub async fn test_send_transfer(runner: &mut TestRunner) {
     let rpc = runner.primary_rpc();
 
@@ -107,6 +107,9 @@ pub async fn test_send_transfer(runner: &mut TestRunner) {
     // Broadcast
     match rpc.send_raw_transaction(&raw_hex).await {
         Ok(hash) => {
+            // Store hash for the receipt test
+            runner.last_tx_hash = Some(hash.clone());
+
             runner.record(TestResult::pass(
                 "Send PQ transfer",
                 format!(
@@ -114,8 +117,6 @@ pub async fn test_send_transfer(runner: &mut TestRunner) {
                     raw.len()
                 ),
             ));
-            // Store hash for receipt test
-            // We'll re-query it in the receipt test
         }
         Err(e) => {
             runner.record(TestResult::fail(
@@ -130,126 +131,69 @@ pub async fn test_send_transfer(runner: &mut TestRunner) {
 pub async fn test_receipt_validation(runner: &mut TestRunner) {
     let rpc = runner.primary_rpc();
 
-    // Load keypair to get the sender address
-    let keypair = match load_keypair(runner) {
-        Ok(kp) => kp,
-        Err(e) => {
+    // Use the hash stored by test_send_transfer
+    let tx_hash = match &runner.last_tx_hash {
+        Some(h) => h.clone(),
+        None => {
             runner.record(TestResult::fail(
                 "Transaction receipt valid",
-                format!("Keystore load failed: {e}"),
+                "No tx hash available — send test must have failed",
             ));
             return;
         }
     };
 
-    let sender = keypair.address();
-
-    // Get nonce — the last tx we sent used nonce N, so current nonce should be N+1
-    // We'll check the tx at nonce (current - 1) via block scanning
-    let nonce = match rpc.get_nonce(sender).await {
-        Ok(n) => n,
-        Err(e) => {
-            runner.record(TestResult::fail(
-                "Transaction receipt valid",
-                format!("nonce error: {e}"),
-            ));
-            return;
-        }
-    };
-
-    if nonce == 0 {
-        runner.record(TestResult::fail(
-            "Transaction receipt valid",
-            "nonce is 0 — no tx was sent yet",
-        ));
-        return;
-    }
-
-    // Wait for the tx to be mined (up to 15s)
-    tokio::time::sleep(std::time::Duration::from_secs(6)).await;
-
-    // Scan recent blocks for our transaction
-    let block_num = match rpc.block_number().await {
-        Ok(b) => b,
-        Err(e) => {
-            runner.record(TestResult::fail(
-                "Transaction receipt valid",
-                format!("block_number: {e}"),
-            ));
-            return;
-        }
-    };
-
-    let sender_lower = format!("{sender:?}").to_lowercase();
-    let mut found_hash: Option<String> = None;
-
-    for blk in (block_num.saturating_sub(10)..=block_num).rev() {
-        if let Ok(Some(block)) = rpc.get_block_by_number(blk).await {
-            if let Some(txs) = block.get("transactions").and_then(|v| v.as_array()) {
-                for tx in txs {
-                    let from = tx.get("from").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
-                    if from == sender_lower {
-                        if let Some(hash) = tx.get("hash").and_then(|v| v.as_str()) {
-                            found_hash = Some(hash.to_string());
-                            break;
-                        }
-                    }
-                }
+    // Wait for the tx to be mined (up to 15s, polling every 2s)
+    let mut receipt_opt = None;
+    for _ in 0..8 {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        match rpc.get_transaction_receipt(&tx_hash).await {
+            Ok(Some(r)) => {
+                receipt_opt = Some(r);
+                break;
             }
-        }
-        if found_hash.is_some() {
-            break;
-        }
-    }
-
-    let Some(tx_hash) = found_hash else {
-        runner.record(TestResult::fail(
-            "Transaction receipt valid",
-            "Could not find our tx in recent blocks (may still be pending)",
-        ));
-        return;
-    };
-
-    // Get receipt
-    match rpc.get_transaction_receipt(&tx_hash).await {
-        Ok(Some(receipt)) => {
-            let success = receipt.status == "0x1";
-            let gas_used_hex = &receipt.gas_used;
-            let gas_used = u64::from_str_radix(
-                gas_used_hex.strip_prefix("0x").unwrap_or(gas_used_hex),
-                16,
-            )
-            .unwrap_or(0);
-
-            if success && gas_used == 21000 {
-                runner.record(TestResult::pass(
-                    "Transaction receipt valid",
-                    format!("status=success, gasUsed={gas_used}, hash={tx_hash}"),
-                ));
-            } else if success {
-                runner.record(TestResult::pass(
-                    "Transaction receipt valid",
-                    format!("status=success, gasUsed={gas_used} (expected 21000)"),
-                ));
-            } else {
+            Ok(None) => continue, // still pending
+            Err(e) => {
                 runner.record(TestResult::fail(
                     "Transaction receipt valid",
-                    format!("status=REVERTED, gasUsed={gas_used}"),
+                    format!("RPC error: {e}"),
                 ));
+                return;
             }
         }
-        Ok(None) => {
-            runner.record(TestResult::fail(
-                "Transaction receipt valid",
-                format!("receipt is null for {tx_hash} — tx still pending?"),
-            ));
-        }
-        Err(e) => {
-            runner.record(TestResult::fail(
-                "Transaction receipt valid",
-                format!("RPC error: {e}"),
-            ));
-        }
+    }
+
+    let Some(receipt) = receipt_opt else {
+        runner.record(TestResult::fail(
+            "Transaction receipt valid",
+            format!("receipt still null after 16s — tx may be stuck: {tx_hash}"),
+        ));
+        return;
+    };
+
+    let success = receipt.status == "0x1";
+    let gas_used_hex = &receipt.gas_used;
+    let gas_used = u64::from_str_radix(
+        gas_used_hex.strip_prefix("0x").unwrap_or(gas_used_hex),
+        16,
+    )
+    .unwrap_or(0);
+
+    if success && gas_used == 21000 {
+        runner.record(TestResult::pass(
+            "Transaction receipt valid",
+            format!("status=success, gasUsed={gas_used}, hash={tx_hash}"),
+        ));
+    } else if success {
+        runner.record(TestResult::pass(
+            "Transaction receipt valid",
+            format!("status=success, gasUsed={gas_used} (expected 21000)"),
+        ));
+    } else {
+        runner.record(TestResult::fail(
+            "Transaction receipt valid",
+            format!("status=REVERTED, gasUsed={gas_used}"),
+        ));
     }
 }
 
