@@ -177,6 +177,20 @@ enum Command {
         #[arg(short, long, default_value = "http://localhost:8545")]
         rpc: String,
     },
+
+    /// Export the raw 32-byte ML-DSA-65 seed from a keystore.
+    ///
+    /// Outputs 64 hex chars to stdout — suitable for PQ_VALIDATOR_SK env var.
+    /// WARNING: This is your private key. Do not share it.
+    ExportSeed {
+        /// Keystore file path.
+        #[arg(short, long, default_value = "keystore.json")]
+        keystore: PathBuf,
+
+        /// Passphrase to decrypt the keystore.
+        #[arg(short, long)]
+        passphrase: Option<String>,
+    },
 }
 
 // ─── Entry point ─────────────────────────────────────────────────────────────
@@ -198,6 +212,7 @@ async fn main() -> Result<()> {
         Command::Receipt { tx_hash, rpc, timeout } => cmd_receipt(tx_hash, rpc, timeout).await,
         Command::Sign { keystore, passphrase, message } => cmd_sign(keystore, passphrase, message),
         Command::Call { to, data, from, rpc } => cmd_call(to, data, from, rpc).await,
+        Command::ExportSeed { keystore, passphrase } => cmd_export_seed(keystore, passphrase),
     }
 }
 
@@ -226,6 +241,14 @@ fn cmd_address(keystore: PathBuf) -> Result<()> {
     let address = Keystore::address_from_file(&keystore)
         .with_context(|| format!("reading keystore {}", keystore.display()))?;
     println!("{address}");
+    Ok(())
+}
+
+fn cmd_export_seed(keystore: PathBuf, passphrase: Option<String>) -> Result<()> {
+    let pass = resolve_passphrase(passphrase, false)?;
+    let keypair = Keystore::load(&keystore, &pass)
+        .with_context(|| format!("decrypting keystore {}", keystore.display()))?;
+    println!("{}", hex::encode(keypair.seed_bytes()));
     Ok(())
 }
 
