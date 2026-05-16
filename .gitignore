@@ -11,6 +11,10 @@ logs/
 __pycache__/
 *.pyc
 
+# Foundry build artifacts
+contracts/cache/
+contracts/out/
+
 # Keystores (sensitive credentials)
 keystore.json
 *.keystore
