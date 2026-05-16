@@ -27,7 +27,7 @@ spec:
         app.kubernetes.io/name: postquantumevm
         app.kubernetes.io/component: validator
     spec:
-      # Init container to select the correct PoA config based on pod ordinal
+      # Init container to select the correct PoA config and seed based on pod ordinal
       initContainers:
         - name: select-poa-config
           image: busybox:1.36
@@ -40,11 +40,14 @@ spec:
               IDX=$((ORDINAL + 1))
               echo "Validator index: $IDX (hostname: $HOSTNAME)"
               cp /configs/poa-config-${IDX}.json /poa/poa-config.json
+              cp /seeds/seed-${IDX}.hex /poa/seed.hex
               echo "PoA config selected:"
               cat /poa/poa-config.json
           volumeMounts:
             - name: poa-configs
               mountPath: /configs
+            - name: validator-seeds
+              mountPath: /seeds
             - name: poa-selected
               mountPath: /poa
 
@@ -56,19 +59,9 @@ spec:
             - name: PQ_POA_CONFIG
               value: /poa/poa-config.json
           command:
-            - pq-reth
-          args:
-            - "node"
-            - "--chain=/app/genesis.json"
-            - "--datadir=/data"
-            - "--dev"
-            - "--http"
-            - "--http.addr=0.0.0.0"
-            - "--http.port=8545"
-            - "--http.api=eth,net,web3,admin"
-            - "--http.corsdomain=*"
-            - "--port=30303"
-            - "--log.stdout.filter=info"
+            - sh
+            - -c
+            - "export PQ_VALIDATOR_SK=$(cat /poa/seed.hex) && exec pq-reth node --chain=/app/genesis.json --datadir=/data --dev --http --http.addr=0.0.0.0 --http.port=8545 --http.api=eth,net,web3,admin --http.corsdomain=* --port=30303 --log.stdout.filter=info"
           ports:
             - name: http-rpc
               containerPort: 8545
@@ -116,6 +109,9 @@ spec:
         - name: poa-configs
           configMap:
             name: pqevm-poa-configs
+        - name: validator-seeds
+          secret:
+            secretName: pqevm-validator-seeds
         - name: poa-selected
           emptyDir: {}
 
