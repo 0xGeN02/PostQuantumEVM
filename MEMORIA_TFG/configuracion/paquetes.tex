@@ -1,0 +1,78 @@
+% =========================================================
+% Compatibilidad entre compiladores
+% =========================================================
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage[scaled=0.95]{helvet}
+\else
+  \usepackage{fontspec}
+  \setmainfont{TeX Gyre Heros}
+\fi
+\renewcommand{\familydefault}{\sfdefault}
+
+% =========================================================
+% Idioma y tipografía básica
+% =========================================================
+\usepackage[main=spanish,english]{babel}
+\usepackage{microtype}
+\usepackage{setspace}
+
+% =========================================================
+% Página y márgenes
+% =========================================================
+\usepackage[
+  a4paper,
+  top=25.4mm,
+  bottom=25.4mm,
+  left=19.05mm,
+  right=19.05mm,
+  headheight=36pt,
+  headsep=12pt,
+  footskip=14mm
+]{geometry}
+
+% =========================================================
+% Utilidades
+% =========================================================
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{tocloft}
+\usepackage{hyperref}
+\usepackage{csquotes}
+\usepackage{etoolbox}
+\usepackage{bookmark}
+\usepackage{caption}
+
+% =========================================================
+% Bibliografía APA
+% Compilación recomendada: pdfLaTeX + Biber
+% =========================================================
+\usepackage[
+  backend=biber,
+  style=apa,
+  sorting=nyt,
+  giveninits=true,
+  uniquelist=false,
+  maxbibnames=99,
+  doi=true,
+  url=true,
+  isbn=false
+]{biblatex}
+
+\DeclareLanguageMapping{spanish}{spanish-apa}
+\addbibresource{bibliografia.bib}
+
+% =========================================================
+% Hipervínculos
+% =========================================================
+\hypersetup{
+  pdftitle={Plantilla UIE en LaTeX},
+  pdfauthor={Universidad Intercontinental de la Empresa},
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=black
+}
