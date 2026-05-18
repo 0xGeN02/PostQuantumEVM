@@ -117,6 +117,9 @@
 \usepackage{array}
 \usepackage{longtable}
 
+% Columna p{} con alineación a la izquierda sin justificar (evita underfull hboxes)
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
 % =========================================================
 % Utilidades
 % =========================================================
