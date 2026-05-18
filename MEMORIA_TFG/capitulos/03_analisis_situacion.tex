@@ -82,7 +82,7 @@ A partir del análisis del problema y los objetivos definidos en la Sección 1.3
   
   \item \textbf{Codificación y decodificación RLP.} Las transacciones \texttt{0x50} deben ser serializables y deserializables en formato RLP, con validación estricta de longitudes de firma y clave pública. \hfill \emph{[OE2]}
   
-  \item \textbf{Derivación de direcciones PQ.} Las direcciones post-cuánticas deben derivarse como $\text{SHAKE-256}(\mathit{pk}, 32)[12{:}32]$, proporcionando separación de dominios respecto a las direcciones clásicas. \hfill \emph{[OE3]}
+  \item \textbf{Derivación de direcciones PQ.} Las direcciones post-cuánticas deben derivarse como los últimos 20 bytes de la salida SHAKE-256 de la clave pública, proporcionando separación de dominios respecto a las direcciones clásicas. \hfill \emph{[OE3]}
   
   \item \textbf{Hash de firma y hash de transacción.} El hash de firma debe calcularse mediante SHAKE-256 con separación de dominio (prefijo \texttt{0x50}), y el hash de transacción debe ser único e incluir la firma y la clave pública. \hfill \emph{[OE2, OE3]}
   
@@ -299,7 +299,7 @@ Se descartó un PoS post-cuántico por:
 \begin{enumerate}
   \item \textbf{Inexistencia de agregación PQ estandarizada}: No existe un esquema de firma post-cuántica que soporte agregación eficiente. Los candidatos experimentales (basados en retículos multilineales o STARKs) no han alcanzado madurez de estandarización.
   
-  \item \textbf{Escalabilidad}: Sin agregación, cada bloque debería incluir $\sim$128.000 firmas individuales ML-DSA-65 (una por validador atestante), lo que representaría $\sim$128.000 \times 3.309 \approx 424$ MB por bloque ---varios órdenes de magnitud por encima de lo viable.
+  \item \textbf{Escalabilidad}: Sin agregación, cada bloque debería incluir ${\sim}128.000$ firmas individuales ML-DSA-65 (una por validador atestante), lo que representaría ${\sim}128.000 \times 3.309 \approx 424$ MB por bloque ---varios órdenes de magnitud por encima de lo viable.
   
   \item \textbf{Complejidad del consenso}: Modificar la capa de consenso requiere coordinar cambios en cinco clientes de consenso independientes, más allá del alcance de un TFG.
 \end{enumerate}

@@ -5,6 +5,7 @@
 \ifPDFTeX
   \usepackage[T1]{fontenc}
   \usepackage[utf8]{inputenc}
+  \usepackage{pmboxdraw}      % Box-drawing chars (├─│└) in verbatim
   \usepackage[scaled=0.95]{helvet}
 \else
   \usepackage{fontspec}
@@ -16,7 +17,7 @@
 % Idioma y tipografía básica
 % =========================================================
 \usepackage[main=spanish,english]{babel}
-\usepackage{microtype}
+\usepackage[protrusion=true, expansion=true, patch=none]{microtype}
 \usepackage{setspace}
 
 % =========================================================
@@ -28,7 +29,7 @@
   bottom=25.4mm,
   left=19.05mm,
   right=19.05mm,
-  headheight=36pt,
+  headheight=46pt,
   headsep=12pt,
   footskip=14mm
 ]{geometry}
@@ -54,7 +55,7 @@
 % Diagramas y figuras
 % =========================================================
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta, positioning, calc, decorations.pathreplacing, fit, shapes.geometric, backgrounds, matrix, chains}
+\usetikzlibrary{arrows.meta, positioning, calc, decorations.pathreplacing, fit, shapes.geometric, backgrounds, matrix, chains, babel}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 

@@ -78,7 +78,7 @@ Este trabajo demuestra que la migración de la capa de transacciones de un clien
 \begin{enumerate}
   \item \textbf{Registro de claves públicas on-chain.} Implementar un contrato de registro que mapee $\text{dirección} \to \text{clave pública}$, permitiendo que las transacciones posteriores a la primera omitan la clave pública (ahorro de 1.952 bytes por transacción). Esto requiere una extensión del formato \texttt{0x50} o un nuevo tipo de transacción.
   
-  \item \textbf{Modelo de comisiones EIP-1559.} Extender el tipo \texttt{0x50} con campos \texttt{max\_fee\_per\_gas} y \texttt{max\_priority\_fee\_per\_gas} para compatibilidad completa con el modelo de comisiones dinámicas de Ethereum.
+  \item \textbf{Modelo de comisiones EIP-1559.} Extender el tipo \texttt{0x50} con los campos de comisión dinámica (\texttt{max\_fee\_per\_gas} y \texttt{max\_priority\_fee\_per\_gas}) para compatibilidad completa con el mecanismo de Ethereum.
   
   \item \textbf{Agregación de firmas post-cuánticas.} Investigar esquemas de agregación basados en STARKs o retículos multilineales que permitan comprimir las atestaciones de miles de validadores en una sola firma compacta. Este es el principal obstáculo para la migración del consenso PoS.
   
