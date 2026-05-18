@@ -1,0 +1,11 @@
+El algoritmo de Shor, ejecutable en un computador cuántico criptográficamente relevante (CRQC), es capaz de resolver el problema del logaritmo discreto en curvas elípticas en tiempo polinómico, comprometiendo la seguridad de ECDSA/secp256k1, el esquema de firma empleado en todas las transacciones de Ethereum. Este trabajo analiza las vulnerabilidades cuánticas de la pila criptográfica de la Máquina Virtual de Ethereum (EVM) y propone una mitigación concreta: un nuevo tipo de transacción (\texttt{0x50}) basado en ML-DSA-65 (CRYSTALS-Dilithium, FIPS-204), el primer esquema de firma post-cuántica estandarizado por NIST, fundamentado en la dureza del problema Module-LWE sobre retículos algebraicos.
+
+La solución se materializa en un \emph{fork} del cliente de ejecución \emph{reth}, donde se reemplaza ECDSA por ML-DSA-65 en la firma y verificación de transacciones, se introduce una derivación de direcciones basada en SHAKE-256 en lugar de Keccak-256, se implementa un nuevo \emph{opcode} EVM (\texttt{PQHASH}, \texttt{0x21}) y un precompilado para verificación ML-DSA-65, y se deshabilitan trece precompilados clásicos vulnerables a ataques cuánticos. El consenso se implementa como Proof of Authority (PoA) con sellado ML-DSA-65 y rotación round-robin de validadores.
+
+Como componente motivacional, se desarrolla una API de simulación cuántica con Qiskit que demuestra la recuperación de claves privadas mediante el algoritmo de Shor sobre una curva elíptica reducida y la búsqueda de preimágenes hash mediante el algoritmo de Grover.
+
+La validación se realiza mediante una suite de pruebas extremo a extremo con quince tests que verifican identidad de cadena, consenso, modelo de comisiones EIP-1559, transacciones post-cuánticas, despliegue de contratos inteligentes y consistencia entre tres nodos validadores. Todos los tests pasan satisfactoriamente. El trabajo concluye con una propuesta de EIP (\emph{Ethereum Improvement Proposal}) para la estandarización del tipo de transacción post-cuántica.
+
+\vspace*{4\baselineskip}
+\textbf{Palabras clave:}\\
+blockchain, computación cuántica, criptografía post-cuántica, Ethereum, EVM, FIPS-204, ML-DSA-65, reth, retículos, SHAKE-256

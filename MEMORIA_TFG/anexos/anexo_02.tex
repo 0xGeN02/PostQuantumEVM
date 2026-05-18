@@ -1,0 +1,70 @@
+\section{Anexo 2: Especificación EIP --- Post-Quantum Transaction Type}
+\label{sec:anexo_eip}
+
+La propuesta completa de EIP se encuentra en el archivo \texttt{eips/eip-pq-tx.md} del repositorio del proyecto. A continuación se presenta un resumen estructurado de los campos principales.
+
+\subsection*{Metadatos}
+
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Campo} & \textbf{Valor} \\
+\midrule
+EIP & XXXX (pendiente de asignación) \\
+Título & Post-Quantum Transaction Type with ML-DSA-65 \\
+Autor & 0xGeN02 (@0xGeN02) \\
+Estado & Draft \\
+Tipo & Standards Track / Core \\
+Requiere & EIP-2718 \\
+Fecha & 2026-05-17 \\
+\bottomrule
+\end{tabular}
+
+\subsection*{Constantes}
+
+\begin{tabular}{@{}llL{7cm}@{}}
+\toprule
+\textbf{Constante} & \textbf{Valor} & \textbf{Descripción} \\
+\midrule
+\texttt{PQ\_TX\_TYPE} & \texttt{0x50} & Identificador de tipo de transacción EIP-2718 \\
+\texttt{MLDSA65\_SIG\_LEN} & 3.309 & Longitud de firma ML-DSA-65 (bytes) \\
+\texttt{MLDSA65\_PK\_LEN} & 1.952 & Longitud de clave pública ML-DSA-65 (bytes) \\
+\texttt{PQHASH\_OPCODE} & \texttt{0x21} & Opcode EVM para SHAKE-256 \\
+\texttt{MLDSA\_PRECOMPILE\_ADDR} & \texttt{0x0...0100} & Dirección del precompilado ML-DSA-65 \\
+\texttt{MLDSA\_VERIFY\_GAS} & 3.450 & Coste de gas de verificación ML-DSA-65 \\
+\bottomrule
+\end{tabular}
+
+\subsection*{Formato de transacción}
+
+\begin{verbatim}
+0x50 || rlp([chain_id, nonce, gas_price, gas_limit,
+             to, value, input, signature, public_key])
+\end{verbatim}
+
+\subsection*{Hash de firma}
+
+\begin{verbatim}
+signing_hash = SHAKE-256(
+    0x50 || chain_id(8B) || nonce(8B) || gas_price(16B)
+    || gas_limit(8B) || to_flag(1B) || [to(20B)]
+    || value(16B) || input
+, output_length=32)
+\end{verbatim}
+
+\subsection*{Derivación de dirección}
+
+\begin{verbatim}
+address = SHAKE-256(public_key, output_length=32)[12..32]
+\end{verbatim}
+
+\subsection*{Precompilados deshabilitados}
+
+ecrecover (0x01), BN254 (0x06--0x08), KZG (0x0a), BLS12-381 (0x0b--0x13).
+
+\subsection*{Referencia}
+
+El texto completo de la propuesta, incluyendo Rationale, Backwards Compatibility, Test Cases y Security Considerations, está disponible en:
+
+\begin{center}
+\texttt{https://github.com/0xGeN02/PostQuantumEVM/blob/main/eips/eip-pq-tx.md}
+\end{center}

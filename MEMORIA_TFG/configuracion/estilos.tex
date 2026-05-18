@@ -1,0 +1,116 @@
+% =========================================================
+% Ajustes tipográficos generales
+% =========================================================
+\setstretch{1.08}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{3}
+\captionsetup{font=small,labelfont=bf}
+
+% =========================================================
+% Estilo de cabeceras y pies de página
+% =========================================================
+\fancypagestyle{portada}{%
+  \fancyhf{}
+  \fancyfoot[R]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}
+  \renewcommand{\footrulewidth}{0pt}
+}
+
+\fancypagestyle{frontmatter}{%
+  \fancyhf{}
+  \fancyhead[L]{%
+    \IfFileExists{imagenes/logo_uie.png}{%
+      \includegraphics[width=2.06cm]{imagenes/logo_uie.png}%
+    }{}%
+  }
+  \fancyfoot[R]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}
+  \renewcommand{\footrulewidth}{0pt}
+}
+
+\fancypagestyle{frontblank}{%
+  \fancyhf{}
+  \fancyfoot[R]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}
+  \renewcommand{\footrulewidth}{0pt}
+}
+
+\fancypagestyle{cuerpo}{%
+  \fancyhf{}
+  \fancyfoot[R]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}
+  \renewcommand{\footrulewidth}{0pt}
+}
+
+\fancypagestyle{plain}{%
+  \fancyhf{}
+  \fancyfoot[R]{\thepage}
+  \renewcommand{\headrulewidth}{0pt}
+  \renewcommand{\footrulewidth}{0pt}
+}
+
+\pagestyle{cuerpo}
+
+% =========================================================
+% Formato de títulos
+% =========================================================
+\titleformat{\chapter}[block]
+  {\bfseries\fontsize{16}{18}\selectfont\centering}
+  {\thechapter}
+  {0.8em}
+  {}
+\titlespacing*{\chapter}{0pt}{0pt}{18pt}
+
+\titleformat{\section}
+  {\bfseries\fontsize{12}{14}\selectfont}
+  {\thesection}{0.9em}{}
+\titlespacing*{\section}{0pt}{18pt}{8pt}
+
+\titleformat{\subsection}
+  {\bfseries\fontsize{12}{14}\selectfont}
+  {\thesubsection}{0.9em}{}
+\titlespacing*{\subsection}{0pt}{12pt}{6pt}
+
+\titleformat{\subsubsection}
+  {\bfseries\fontsize{12}{14}\selectfont}
+  {\thesubsubsection}{0.9em}{}
+\titlespacing*{\subsubsection}{0pt}{10pt}{4pt}
+
+% =========================================================
+% Índices
+% =========================================================
+\renewcommand{\cfttoctitlefont}{\hfill\bfseries\fontsize{16}{18}\selectfont}
+\renewcommand{\cftaftertoctitle}{\hfill}
+\renewcommand{\cftloftitlefont}{\hfill\bfseries\fontsize{16}{18}\selectfont}
+\renewcommand{\cftafterloftitle}{\hfill}
+\renewcommand{\cftlottitlefont}{\hfill\bfseries\fontsize{16}{18}\selectfont}
+\renewcommand{\cftafterlottitle}{\hfill}
+
+\setlength{\cftbeforechapskip}{4pt}
+\setlength{\cftbeforesecskip}{2pt}
+\setlength{\cftbeforesubsecskip}{2pt}
+\setlength{\cftbeforesubsubsecskip}{2pt}
+\setlength{\cftchapnumwidth}{2.3em}
+\setlength{\cftsecnumwidth}{3.4em}
+\setlength{\cftsubsecnumwidth}{4.8em}
+\setlength{\cftsubsubsecnumwidth}{6.0em}
+
+\addto\captionsspanish{%
+  \renewcommand{\contentsname}{ÍNDICE DE CONTENIDOS}%
+  \renewcommand{\listfigurename}{ÍNDICE DE FIGURAS}%
+  \renewcommand{\listtablename}{ÍNDICE DE TABLAS}%
+}
+
+\renewcommand{\cftchapfont}{\normalfont}
+\renewcommand{\cftsecfont}{\normalfont}
+\renewcommand{\cftsubsecfont}{\normalfont}
+\renewcommand{\cftsubsubsecfont}{\normalfont}
+\renewcommand{\cftchappagefont}{\normalfont}
+\renewcommand{\cftsecpagefont}{\normalfont}
+\renewcommand{\cftsubsecpagefont}{\normalfont}
+\renewcommand{\cftsubsubsecpagefont}{\normalfont}
+
+\renewcommand{\cftchapleader}{\cftdotfill{\cftchapdotsep}}
+\renewcommand{\cftchapdotsep}{\cftdotsep}

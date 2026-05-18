@@ -1,0 +1,11 @@
+Shor's algorithm, executable on a cryptographically relevant quantum computer (CRQC), can solve the elliptic-curve discrete logarithm problem in polynomial time, compromising the security of ECDSA/secp256k1---the signature scheme used in every Ethereum transaction. This work analyses the quantum vulnerabilities of the Ethereum Virtual Machine (EVM) cryptographic stack and proposes a concrete mitigation: a new transaction type (\texttt{0x50}) based on ML-DSA-65 (CRYSTALS-Dilithium, FIPS-204), the first post-quantum digital signature scheme standardised by NIST, grounded on the hardness of the Module-LWE problem over algebraic lattices.
+
+The solution is implemented as a fork of the \emph{reth} execution client, where ECDSA is replaced by ML-DSA-65 for transaction signing and verification, address derivation is changed from Keccak-256 to SHAKE-256, a new EVM opcode (\texttt{PQHASH}, \texttt{0x21}) and an ML-DSA-65 verification precompile are introduced, and thirteen classical precompiles vulnerable to quantum attacks are disabled. Consensus is implemented as Proof of Authority (PoA) with ML-DSA-65 block sealing and round-robin validator rotation.
+
+As a motivational component, a quantum simulation API built with Qiskit demonstrates private key recovery via Shor's algorithm on a reduced elliptic curve and hash preimage search via Grover's algorithm.
+
+Validation is performed through an end-to-end test suite comprising fifteen tests that verify chain identity, consensus, the EIP-1559 fee model, post-quantum transactions, smart contract deployment, and state consistency across three validator nodes. All tests pass successfully. The work concludes with an EIP (Ethereum Improvement Proposal) draft for the standardisation of the post-quantum transaction type.
+
+\vspace*{4\baselineskip}
+\textbf{Keywords:}\\
+blockchain, Ethereum, EVM, FIPS-204, lattices, ML-DSA-65, post-quantum cryptography, quantum computing, reth, SHAKE-256

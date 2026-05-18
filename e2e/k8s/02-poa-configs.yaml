@@ -1,12 +1,18 @@
 # PoA Config ConfigMap — one per validator
-# NOTE: In production, generate real keys with ./scripts/generate-validator-keys.sh
-# and replace the placeholder public keys below.
+# NOTE: Generate real keys with ./scripts/generate-validator-keys.sh
+# and replace the placeholder configs below.
 #
-# To create from generated files:
+# To create from generated files (recommended):
 #   kubectl create configmap pqevm-poa-configs -n pqevm \
 #     --from-file=poa-config-1.json=scripts/validator-keys/poa-config-1.json \
 #     --from-file=poa-config-2.json=scripts/validator-keys/poa-config-2.json \
 #     --from-file=poa-config-3.json=scripts/validator-keys/poa-config-3.json
+#
+# Validator signing keys (PQ_VALIDATOR_SK) should be stored as K8s Secrets:
+#   kubectl create secret generic pqevm-validator-seeds -n pqevm \
+#     --from-file=seed-1.hex=scripts/validator-keys/seed-1.hex \
+#     --from-file=seed-2.hex=scripts/validator-keys/seed-2.hex \
+#     --from-file=seed-3.hex=scripts/validator-keys/seed-3.hex
 ---
 apiVersion: v1
 kind: ConfigMap

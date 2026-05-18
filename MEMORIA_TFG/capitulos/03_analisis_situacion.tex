@@ -1,0 +1,319 @@
+\chapter{ANÁLISIS DE LA SITUACIÓN}
+\label{cap:analisis}
+
+Este capítulo traduce los fundamentos teóricos del Capítulo 2 en un análisis concreto de las vulnerabilidades cuánticas de Ethereum, define los requisitos funcionales y no funcionales del sistema a desarrollar, presenta la arquitectura de la solución propuesta y justifica las alternativas descartadas durante el proceso de diseño.
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Descripción detallada del problema}
+\label{sec:problema_detallado}
+%% ═══════════════════════════════════════════════════════════
+
+\subsection{Superficie de ataque cuántico en Ethereum}
+
+El análisis de los puntos de vulnerabilidad identificados en la Sección 1.2 (P1--P5) revela que la exposición cuántica de Ethereum no se limita a un componente aislado, sino que afecta a múltiples capas del protocolo de forma simultánea. La Tabla~\ref{tab:superficie_ataque} cuantifica esta superficie.
+
+\begin{table}[htbp]
+\centering
+\caption{Superficie de ataque cuántico en Ethereum por componente.}
+\label{tab:superficie_ataque}
+\begin{tabular}{@{}L{3cm}L{3.5cm}L{3cm}L{4cm}@{}}
+\toprule
+\textbf{Componente} & \textbf{Primitiva vulnerable} & \textbf{Algoritmo cuántico} & \textbf{Impacto} \\
+\midrule
+Firma de transacciones & ECDSA / secp256k1 & Shor (ECDLP) & Falsificación de firmas, robo de fondos \\
+\texttt{ecrecover} (0x01) & ECDSA recovery & Shor (ECDLP) & Suplantación de identidad on-chain \\
+BN254 (0x06--0x08) & Emparejamientos bilineales & Shor (DLP) & Rotura de verificaciones zk-SNARK \\
+KZG (0x0a) & Compromisos elípticos & Shor (DLP) & Invalidación de blob transactions \\
+BLS12-381 (0x0b--0x13) & Firmas BLS & Shor (DLP) & Rotura de atestaciones PoS \\
+Consenso PoS (CL) & BLS12-381 aggregation & Shor (DLP) & Control total de la cadena \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Cada cuenta Ethereum que ha emitido al menos una transacción tiene su clave pública expuesta en la blockchain ---recuperable a partir de la firma $(v, r, s)$ mediante \texttt{ecrecover}---. Un adversario con un CRQC podría, para cada una de estas cuentas, ejecutar el algoritmo de Shor (Ecuación~\ref{eq:key_recovery}) y obtener la clave privada correspondiente, ganando control total sobre los fondos y contratos asociados.
+
+Las cuentas que \emph{nunca} han emitido una transacción (solo han recibido fondos) mantienen su clave pública oculta tras el hash de la dirección ($\texttt{keccak256}(\mathit{pk})[12{:}32]$), protegidas por la resistencia a preimagen de Keccak-256. Sin embargo, esta protección se pierde irremediablemente en el momento en que la cuenta firma su primera transacción.
+
+\subsection{Análisis temporal: CRQC vs. complejidad de migración}
+
+La amenaza cuántica presenta una asimetría temporal crítica. Por un lado, las estimaciones de disponibilidad de un CRQC se sitúan en un horizonte de 10 a 15 años \parencite{nistpqc2024}. Por otro lado, una migración criptográfica completa de Ethereum requiere múltiples fases:
+
+\begin{enumerate}
+  \item \textbf{Investigación y estandarización} (1--3 años): Diseño de nuevos tipos de transacción, selección de algoritmos, propuestas EIP, revisión por la comunidad.
+  \item \textbf{Implementación en clientes} (1--2 años): Modificación de todos los clientes de ejecución (geth, Nethermind, Besu, Erigon, reth) y consenso (Prysm, Lighthouse, Teku, Nimbus, Lodestar).
+  \item \textbf{Testnet y auditoría} (1--2 años): Despliegue en redes de prueba, auditorías de seguridad, corrección de vulnerabilidades.
+  \item \textbf{Activación en mainnet} (6--12 meses): Hard fork coordinado, período de transición con coexistencia de transacciones clásicas y PQ.
+  \item \textbf{Migración de usuarios} (2--5+ años): Los usuarios deben migrar voluntariamente sus fondos a cuentas PQ. Los fondos en cuentas clásicas permanecen vulnerables.
+\end{enumerate}
+
+El tiempo total estimado de migración es de 6 a 13 años, solapándose peligrosamente con las proyecciones de disponibilidad de un CRQC. Además, el modelo de amenaza <<harvest now, decrypt later>> implica que las transacciones firmadas hoy estarán expuestas retroactivamente cuando un CRQC esté disponible ---las claves públicas ya son visibles en el registro inmutable de la blockchain.
+
+\subsection{Escenarios de fallo}
+
+Se identifican tres escenarios de fallo por gravedad creciente:
+
+\textbf{Escenario 1 --- Robo selectivo de fondos}: Un adversario con acceso limitado a un CRQC prioriza las cuentas con mayores saldos. Dado que las claves públicas de todas las cuentas activas son públicas, el atacante puede calcular las claves privadas correspondientes mediante el algoritmo de Shor y transferir los fondos. Este escenario es económicamente devastador pero no compromete la integridad del protocolo.
+
+\textbf{Escenario 2 --- Rotura de verificaciones on-chain}: Si los precompilados BN254 y BLS12-381 son vulnerables, un adversario puede falsificar pruebas zk-SNARK y firmas BLS utilizadas en contratos inteligentes (puentes cross-chain, protocolos de privacidad, verificación de rollups). Esto compromete la integridad de las aplicaciones descentralizadas sin necesidad de atacar cuentas individuales.
+
+\textbf{Escenario 3 --- Toma de control del consenso}: Si el adversario compromete las claves BLS12-381 de un tercio o más de los validadores de la capa de consenso, puede impedir la finalización de bloques. Si compromete dos tercios, puede reescribir la cadena, realizar doble gasto y censurar transacciones arbitrariamente. Este es el escenario catastrófico: la red pierde todas sus propiedades de seguridad.
+
+El presente trabajo aborda los Escenarios 1 y 2 mediante la migración de la capa de ejecución a ML-DSA-65, la deshabilitación de precompilados vulnerables, y la introducción de primitivas PQ nativas. El Escenario 3 (capa de consenso) queda fuera del alcance, ya que requiere un esquema de agregación de firmas post-cuánticas que no existe de forma estandarizada (ver Sección~\ref{sec:pos_pq}).
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Requisitos}
+\label{sec:requisitos}
+%% ═══════════════════════════════════════════════════════════
+
+A partir del análisis del problema y los objetivos definidos en la Sección 1.3, se derivan los siguientes requisitos funcionales y no funcionales.
+
+\subsection{Requisitos funcionales}
+
+\begin{enumerate}[label=\textbf{RF\arabic{enumi}:}, leftmargin=3em, labelsep=0.5em]
+  \setcounter{enumi}{0}
+  
+  \item \textbf{Simulación cuántica de Shor (ECDLP).} El sistema debe incluir una simulación del algoritmo de Shor aplicado al problema del logaritmo discreto en curvas elípticas sobre un modelo reducido ($y^2 = x^3 + 7 \bmod 17$), demostrando la recuperación de la clave privada a partir de la clave pública. \hfill \emph{[OE1]}
+  
+  \item \textbf{Simulación cuántica de Grover (preimagen hash).} El sistema debe incluir una simulación del algoritmo de Grover para búsqueda de preimágenes sobre una versión reducida de Keccak (4 bits), demostrando la aceleración cuadrática. \hfill \emph{[OE1]}
+  
+  \item \textbf{Tipo de transacción PQ (\texttt{0x50}).} El cliente de ejecución debe soportar un nuevo tipo de transacción EIP-2718 con identificador \texttt{0x50}, que incluya campos para firma ML-DSA-65 (3.309 bytes) y clave pública (1.952 bytes). \hfill \emph{[OE2]}
+  
+  \item \textbf{Codificación y decodificación RLP.} Las transacciones \texttt{0x50} deben ser serializables y deserializables en formato RLP, con validación estricta de longitudes de firma y clave pública. \hfill \emph{[OE2]}
+  
+  \item \textbf{Derivación de direcciones PQ.} Las direcciones post-cuánticas deben derivarse como los últimos 20 bytes de la salida SHAKE-256 de la clave pública, proporcionando separación de dominios respecto a las direcciones clásicas. \hfill \emph{[OE3]}
+  
+  \item \textbf{Hash de firma y hash de transacción.} El hash de firma debe calcularse mediante SHAKE-256 con separación de dominio (prefijo \texttt{0x50}), y el hash de transacción debe ser único e incluir la firma y la clave pública. \hfill \emph{[OE2, OE3]}
+  
+  \item \textbf{Opcode \texttt{PQHASH} (\texttt{0x21}).} La EVM debe incluir un nuevo opcode adyacente a \texttt{KECCAK256} que compute $\text{SHAKE-256}(\mathit{data}, 32)$ sobre datos en memoria, con un modelo de gas análogo. \hfill \emph{[OE4]}
+  
+  \item \textbf{Precompilado ML-DSA-65 (\texttt{0x0100}).} Debe existir un precompilado en la dirección \texttt{0x0100} que verifique firmas ML-DSA-65 a partir de $(h, \sigma, \mathit{pk})$ y devuelva un booleano ABI-codificado. \hfill \emph{[OE4]}
+  
+  \item \textbf{Consenso PoA con ML-DSA-65.} El sistema debe implementar un mecanismo de consenso Proof of Authority donde los validadores sellan bloques con firmas ML-DSA-65 en rotación round-robin. \hfill \emph{[OE5]}
+  
+  \item \textbf{Wallet PQ (CLI y TUI).} Debe existir una herramienta que permita: generación de pares de claves ML-DSA-65, firma de transacciones \texttt{0x50}, envío a un nodo, y consulta de saldos y nonces. \hfill \emph{[OE6]}
+  
+  \item \textbf{Suite de pruebas E2E.} El sistema debe incluir una suite de pruebas de extremo a extremo que valide: identidad de cadena, consenso, comisiones, transacciones PQ (transferencia, recibo, nonce, despliegue de contrato, llamada a contrato) y consistencia multi-nodo. \hfill \emph{[OE7]}
+\end{enumerate}
+
+\subsection{Requisitos no funcionales}
+
+\begin{enumerate}[label=\textbf{RNF\arabic{enumi}:}, leftmargin=3.5em, labelsep=0.5em]
+  \setcounter{enumi}{0}
+  
+  \item \textbf{Seguridad post-cuántica.} Todas las primitivas criptográficas utilizadas para autenticación de transacciones deben proporcionar al menos nivel III de NIST (192 bits de seguridad clásica, 128 bits de seguridad cuántica). Las funciones hash deben mantener al menos 128 bits de seguridad bajo ataques cuánticos (Grover). \hfill \emph{[OE1--OE4]}
+  
+  \item \textbf{Rendimiento.} La verificación de una firma ML-DSA-65 debe completarse en menos de 1 ms. La validación de un bloque completo (hasta 285 transacciones PQ en un bloque de 30M gas) debe completarse en menos de 15 ms de tiempo criptográfico. \hfill \emph{[OE5, OE7]}
+  
+  \item \textbf{Compatibilidad EIP-2718.} El tipo de transacción \texttt{0x50} debe ser compatible con la especificación EIP-2718, permitiendo la coexistencia con tipos de transacción clásicos (\texttt{0x00}--\texttt{0x04}) durante un período de transición. \hfill \emph{[OE2, OE8]}
+  
+  \item \textbf{Extensibilidad.} La arquitectura debe permitir la sustitución del esquema de firma (p.ej., migración futura a ML-DSA-87 o a un esquema basado en hash) sin cambios estructurales en el formato de transacción, el protocolo de red o la lógica de consenso. \hfill \emph{[OE2, OE5]}
+  
+  \item \textbf{Reproducibilidad.} El despliegue completo del sistema (tres nodos validadores, wallet, suite E2E) debe ser reproducible mediante Docker Compose en cualquier máquina con Docker instalado, sin dependencias externas a los repositorios del proyecto. \hfill \emph{[OE7]}
+\end{enumerate}
+
+\subsection{Matriz de trazabilidad}
+
+La Tabla~\ref{tab:trazabilidad} establece la correspondencia entre los requisitos funcionales y no funcionales, los objetivos específicos (OE) y los componentes del sistema que los implementan.
+
+\begin{table}[htbp]
+\centering
+\caption{Matriz de trazabilidad: requisitos, objetivos y componentes.}
+\label{tab:trazabilidad}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Requisito} & \textbf{Objetivo} & \textbf{Componente} & \textbf{Validación} \\
+\midrule
+RF01 & OE1 & qiskit-api & Simulación Shor \\
+RF02 & OE1 & qiskit-api & Simulación Grover \\
+RF03 & OE2 & pq-reth (primitives) & Test unitario + E2E \\
+RF04 & OE2 & pq-reth (primitives) & Test unitario \\
+RF05 & OE3 & pq-reth (primitives) & Test unitario + E2E \\
+RF06 & OE2, OE3 & pq-reth (primitives) & Test unitario \\
+RF07 & OE4 & pq-reth (evm) & Test E2E contrato \\
+RF08 & OE4 & pq-reth (evm) & Test E2E contrato \\
+RF09 & OE5 & pq-reth (consensus, network) & Test E2E multi-nodo \\
+RF10 & OE6 & pq-wallet & Test E2E \\
+RF11 & OE7 & e2e/run-e2e.sh & 27/27 tests \\
+RNF01 & OE1--OE4 & ml-lattice-rs, pq-reth & Análisis teórico \\
+RNF02 & OE5, OE7 & pq-reth & Benchmarks \\
+RNF03 & OE2, OE8 & pq-reth (primitives) & Test E2E \\
+RNF04 & OE2, OE5 & pq-reth (traits) & Análisis de diseño \\
+RNF05 & OE7 & docker-compose & Despliegue reproducible \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Solución propuesta}
+\label{sec:solucion}
+%% ═══════════════════════════════════════════════════════════
+
+\subsection{Visión general de la arquitectura}
+
+La solución se estructura como un sistema distribuido de tres capas: una capa criptográfica (ml-lattice-rs), una capa de protocolo (pq-reth) y una capa de interacción (pq-wallet), complementadas por un módulo de validación teórica (qiskit-api). La Figura~\ref{fig:arquitectura} presenta la arquitectura general.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners, minimum width=3.2cm, minimum height=1cm, align=center, font=\small},
+  layer/.style={draw, dashed, rounded corners, inner sep=8pt},
+  arr/.style={-{Stealth[length=5pt]}, thick}
+]
+
+% Capa criptográfica
+\node[box, fill=blue!10] (mllattice) at (0, 0) {ml-lattice-rs\\(ML-DSA-65)};
+
+% Capa de protocolo
+\node[box, fill=green!10] (primitives) at (-4, 2.5) {pq-primitives\\(TX 0x50, RLP)};
+\node[box, fill=green!10] (consensus) at (-1.3, 2.5) {pq-consensus\\(PoA, sellado)};
+\node[box, fill=green!10] (evm) at (1.4, 2.5) {pq-evm\\(PQHASH, 0x0100)};
+\node[box, fill=green!10] (network) at (4.1, 2.5) {pq-network\\(propagación)};
+
+% Capa de interacción
+\node[box, fill=orange!10] (wallet) at (-2, 5) {pq-wallet\\(CLI / TUI)};
+\node[box, fill=orange!10] (e2e) at (2, 5) {E2E test suite\\(27 tests)};
+
+% Módulo de validación
+\node[box, fill=red!10] (qiskit) at (5.5, 0) {qiskit-api\\(Shor + Grover)};
+
+% Capas
+\begin{scope}[on background layer]
+  \node[layer, fill=blue!3, fit=(mllattice), label={[font=\footnotesize]above left:Capa criptográfica}] {};
+  \node[layer, fill=green!3, fit=(primitives)(consensus)(evm)(network), label={[font=\footnotesize]above left:Capa de protocolo (pq-reth)}] {};
+  \node[layer, fill=orange!3, fit=(wallet)(e2e), label={[font=\footnotesize]above left:Capa de interacción}] {};
+\end{scope}
+
+% Flechas
+\draw[arr] (mllattice) -- (primitives);
+\draw[arr] (mllattice) -- (consensus);
+\draw[arr] (mllattice) -- (evm);
+\draw[arr] (primitives) -- (wallet);
+\draw[arr] (primitives) -- (e2e);
+\draw[arr] (consensus) -- (e2e);
+\draw[arr] (network) -- (e2e);
+
+\end{tikzpicture}
+\caption{Arquitectura general del sistema PostQuantumEVM.}
+\label{fig:arquitectura}
+\end{figure}
+
+\subsection{Componentes del sistema}
+
+\textbf{ml-lattice-rs} es una biblioteca Rust que implementa los algoritmos ML-DSA (FIPS-204) y ML-KEM (FIPS-203). Se distribuye como submódulo Git y se reutiliza en los demás componentes del proyecto. Proporciona las operaciones de generación de claves, firma y verificación con aritmética constante-tiempo sobre el anillo $R_q = \mathbb{Z}_q[X]/(X^{256} + 1)$ con $q = 8.380.417$.
+
+\textbf{pq-reth} es un \emph{fork} del cliente de ejecución reth que incorpora cinco \emph{crates} post-cuánticos:
+\begin{itemize}
+  \item \texttt{pq-primitives}: Define el tipo de transacción \texttt{0x50} con serialización RLP, el hash de firma (SHAKE-256 con dominio), la derivación de direcciones y la verificación de firmas ML-DSA-65.
+  \item \texttt{pq-consensus}: Implementa el consenso Proof of Authority con sellado de bloques mediante ML-DSA-65, rotación round-robin de validadores y validación de bloques PQ.
+  \item \texttt{pq-evm}: Extiende la EVM con el opcode \texttt{PQHASH} (\texttt{0x21}) para SHAKE-256 y el precompilado de verificación ML-DSA-65 en \texttt{0x0100}. Deshabilita los precompilados vulnerables (Tabla~\ref{tab:superficie_ataque}).
+  \item \texttt{pq-network}: Gestiona la propagación de bloques PQ entre nodos mediante el protocolo P2P de reth, con anuncio y recepción de bloques PoA.
+  \item \texttt{pq-pool}: Adapta la \emph{mempool} de transacciones para validar y ordenar transacciones de tipo \texttt{0x50}.
+\end{itemize}
+
+\textbf{pq-wallet} es una aplicación Rust que proporciona una interfaz de línea de comandos (CLI) y una interfaz de terminal interactiva (TUI, construida con \texttt{ratatui}). Permite la generación de pares de claves ML-DSA-65, la firma y envío de transacciones \texttt{0x50}, y la consulta de saldos y nonces. Incluye también la suite de pruebas E2E que se ejecuta contra uno o varios nodos pq-reth.
+
+\textbf{qiskit-api} es una API REST (FastAPI + Qiskit) que expone dos endpoints: simulación del algoritmo de Shor sobre una curva elíptica reducida ($\mathbb{F}_{17}$, $G = (12, 1)$, $n = 18$) y simulación del algoritmo de Grover para búsqueda de preimágenes sobre un Keccak reducido de 4 bits. Su propósito es validar experimentalmente las amenazas teóricas descritas en las Secciones~\ref{sec:shor} y~\ref{sec:grover}.
+
+\subsection{Cobertura de los puntos de vulnerabilidad}
+
+La Tabla~\ref{tab:cobertura_p} muestra cómo cada punto de vulnerabilidad (P1--P5) identificado en la Sección 1.2 es abordado por la solución propuesta.
+
+\begin{table}[htbp]
+\centering
+\caption{Cobertura de los puntos de vulnerabilidad por la solución propuesta.}
+\label{tab:cobertura_p}
+\begin{tabular}{@{}cL{5cm}L{6cm}@{}}
+\toprule
+\textbf{Punto} & \textbf{Vulnerabilidad} & \textbf{Mitigación} \\
+\midrule
+P1 & Firma ECDSA falsificable con CRQC & Firma ML-DSA-65 (seguridad cuántica 128 bits) \\
+P2 & \texttt{ecrecover} sin equivalente PQ & Clave pública explícita en TX; verificación directa \\
+P3 & Direcciones acopladas a secp256k1 & Derivación $\text{SHAKE-256}(\mathit{pk})[12{:}32]$ \\
+P4 & Precompilados criptográficos vulnerables & Deshabilitación de 13 precompilados; nuevo precompilado ML-DSA (0x0100) y opcode PQHASH (0x21) \\
+P5 & Consenso PoS con BLS12-381 & PoA con ML-DSA-65 (capa de consenso PoS: trabajo futuro) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Nótese que P5 se aborda parcialmente: la solución reemplaza el consenso Proof of Stake por Proof of Authority con firmas ML-DSA-65, eliminando la dependencia de BLS12-381 a nivel de la cadena privada. Sin embargo, la migración del consenso PoS de Ethereum mainnet requiere un esquema de agregación de firmas post-cuánticas, lo cual constituye un problema abierto de investigación (ver Sección~\ref{sec:pos_pq}).
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Alternativas descartadas}
+\label{sec:decisiones_descartadas}
+%% ═══════════════════════════════════════════════════════════
+
+Esta sección documenta las alternativas tecnológicas evaluadas durante la fase de diseño y las razones de su descarte. Las decisiones se basan en el análisis teórico del Capítulo 2 y en las restricciones impuestas por el contexto de un cliente blockchain.
+
+\subsection{Falcon-512 como esquema de firma}
+
+Falcon-512 \parencite{nistfips205} ofrece firmas significativamente más compactas que ML-DSA-65 (666 bytes frente a 3.309 bytes) y claves públicas más pequeñas (897 bytes frente a 1.952 bytes). Sin embargo, se descartó por las siguientes razones:
+
+\begin{enumerate}
+  \item \textbf{Complejidad de implementación segura}: La generación de firmas Falcon requiere un muestreo gaussiano discreto sobre NTRU que involucra aritmética de punto flotante. Implementar este muestreo de forma constante-tiempo ---requisito para prevenir ataques de canal lateral--- es significativamente más complejo que la aritmética de retículos de ML-DSA, que opera exclusivamente con enteros.
+  
+  \item \textbf{Riesgo de canal lateral}: Un error sutil en la implementación de punto flotante constante-tiempo puede introducir fugas de información difíciles de detectar. En el contexto de un cliente blockchain ejecutado en hardware heterogéneo (validadores, nodos completos, nodos ligeros), esta superficie de ataque es inaceptable.
+  
+  \item \textbf{Estado de estandarización}: Aunque Falcon fue seleccionado como estándar por NIST, su especificación final (FIPS previsto) aún no ha sido publicada al momento de redacción. ML-DSA ya tiene un estándar final publicado (FIPS-204).
+\end{enumerate}
+
+\subsection{SLH-DSA (SPHINCS+) como esquema de firma}
+
+SLH-DSA \parencite{nistfips205}, estandarizado como FIPS-205, basa su seguridad exclusivamente en funciones hash (sin asunciones sobre retículos), lo que constituye una diversificación criptográfica valiosa. Se descartó por:
+
+\begin{enumerate}
+  \item \textbf{Tamaño de firma excesivo}: SLH-DSA-128s produce firmas de 7.856 bytes, frente a los 3.309 bytes de ML-DSA-65. Una transacción PQ mínima pasaría de $\sim$5,3 KB a $\sim$10 KB, duplicando el consumo de ancho de banda y almacenamiento.
+  
+  \item \textbf{Tiempo de verificación}: La verificación de SLH-DSA-128s requiere $\sim$500 $\mu$s, un orden de magnitud superior a los $\sim$42 $\mu$s de ML-DSA-65. En un bloque de 30M gas con 285 transacciones PQ, el tiempo criptográfico pasaría de $\sim$12 ms a $\sim$143 ms, un incremento que presionaría los intervalos de bloque.
+  
+  \item \textbf{Incompatibilidad con la latencia de validación}: En una red blockchain, cada nodo debe validar cada bloque dentro del intervalo de producción (12 segundos en Ethereum). El sobrecoste de SLH-DSA reduciría el margen disponible para ejecución de transacciones y propagación de red.
+\end{enumerate}
+
+\subsection{Abstracción de cuentas (ERC-4337 / EIP-7702)}
+\label{sec:erc4337}
+
+ERC-4337 (\emph{Account Abstraction Using Alt Mempool}) permite cuentas inteligentes con lógica de verificación de firma personalizada. EIP-7702 (\emph{Set EOA account code for one transaction}) permite delegar la ejecución de una EOA a un contrato. Ambas propuestas podrían, en principio, implementar verificación ML-DSA-65 a nivel de contrato. Se descartaron como solución primaria por:
+
+\begin{enumerate}
+  \item \textbf{Sobrecoste de gas}: Cada \emph{UserOperation} de ERC-4337 incurre en $\sim$20.000+ gas de overhead por el contrato \emph{EntryPoint}, además del coste de verificación. Una transacción nativa elimina este sobrecoste.
+  
+  \item \textbf{Sin protección del consenso}: La verificación de firmas a nivel de contrato no protege la capa de consenso. Los bloques seguirían sellándose con ECDSA/BLS, manteniendo la vulnerabilidad cuántica del protocolo base.
+  
+  \item \textbf{Fragmentación del ecosistema}: Cada wallet debería implementar independientemente la construcción de transacciones PQ a nivel de \emph{UserOperation}, sin un estándar nativo. Un tipo de transacción nativo proporciona una interfaz única.
+  
+  \item \textbf{Dependencia de precompilados vulnerables}: Los contratos ERC-4337 pueden depender internamente de \texttt{ecrecover} u otros precompilados vulnerables, creando cadenas de confianza que un CRQC podría romper.
+\end{enumerate}
+
+No obstante, ERC-4337 y EIP-7702 son complementarios a esta propuesta: en una cadena que ya soporta el tipo \texttt{0x50}, las cuentas inteligentes podrían usar el precompilado \texttt{0x0100} para verificación PQ sin overhead de tipo de transacción.
+
+\subsection{Proof of Stake post-cuántico}
+\label{sec:pos_pq}
+
+El reemplazo ideal del consenso PoS de Ethereum sería un mecanismo PoS con firmas post-cuánticas agregables ---permitiendo combinar las atestaciones de miles de validadores en una sola firma compacta. Esta funcionalidad es la que actualmente proporcionan las firmas BLS12-381 gracias a la propiedad de emparejamiento bilineal ($e(P, Q+R) = e(P, Q) \cdot e(P, R)$).
+
+Se descartó un PoS post-cuántico por:
+
+\begin{enumerate}
+  \item \textbf{Inexistencia de agregación PQ estandarizada}: No existe un esquema de firma post-cuántica que soporte agregación eficiente. Los candidatos experimentales (basados en retículos multilineales o STARKs) no han alcanzado madurez de estandarización.
+  
+  \item \textbf{Escalabilidad}: Sin agregación, cada bloque debería incluir ${\sim}128.000$ firmas individuales ML-DSA-65 (una por validador atestante), lo que representaría ${\sim}128.000 \times 3.309 \approx 424$ MB por bloque ---varios órdenes de magnitud por encima de lo viable.
+  
+  \item \textbf{Complejidad del consenso}: Modificar la capa de consenso requiere coordinar cambios en cinco clientes de consenso independientes, más allá del alcance de un TFG.
+\end{enumerate}
+
+La solución adoptada ---Proof of Authority con ML-DSA-65--- elimina la necesidad de agregación al restringir el conjunto de validadores a un grupo pequeño y conocido (tres nodos en la implementación de referencia). Esto permite una demostración completa de la resistencia cuántica del consenso sin las restricciones de escalabilidad del PoS.
+
+\subsection{Geth como cliente base}
+
+Go-ethereum (geth) es el cliente de ejecución más utilizado ($\sim$45\% de la red). Se consideró como base del \emph{fork} pero se descartó en favor de reth por:
+
+\begin{enumerate}
+  \item \textbf{Seguridad de memoria}: Go no ofrece las garantías de seguridad de memoria de Rust (ausencia de \emph{data races}, \emph{use-after-free}, \emph{buffer overflows} verificada en tiempo de compilación). Para software criptográfico, estas garantías reducen la superficie de ataques de implementación.
+  
+  \item \textbf{Modularidad}: Reth está organizado en más de 100 \emph{crates} con interfaces de \emph{traits}, lo que permite extender componentes específicos (primitivas, consenso, EVM, red) sin modificar el núcleo del cliente. Geth tiene una arquitectura más monolítica.
+  
+  \item \textbf{Consistencia del ecosistema}: La biblioteca criptográfica ml-lattice-rs y el wallet pq-wallet están implementados en Rust. Usar reth permite compartir tipos y dependencias a través de \emph{crates}, evitando la necesidad de interfaces FFI (\emph{Foreign Function Interface}).
+\end{enumerate}

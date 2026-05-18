@@ -1,0 +1,96 @@
+\chapter{CONCLUSIONES Y TRABAJOS FUTUROS}
+\label{cap:conclusiones}
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Cumplimiento de objetivos}
+\label{sec:obj_cumplimiento}
+%% ═══════════════════════════════════════════════════════════
+
+A continuación se evalúa el grado de cumplimiento de cada objetivo específico definido en la Sección 1.3.
+
+\begin{description}[style=nextline, leftmargin=3em]
+  \item[\textbf{OE1} --- Simulación cuántica de Shor y Grover.] \textbf{Cumplido.} Se implementaron y ejecutaron ambas simulaciones mediante Qiskit Aer. El algoritmo de Shor recupera la clave privada en el 100\% de los casos sobre la curva reducida $\mathbb{F}_{17}$. El algoritmo de Grover demuestra la aceleración cuadrática sobre el Keccak reducido de 4 bits (3 consultas vs.\ 8 esperadas clásicamente). Los resultados se exponen a través de una API REST documentada.
+  
+  \item[\textbf{OE2} --- Tipo de transacción PQ (\texttt{0x50}).] \textbf{Cumplido.} Se diseñó e implementó el tipo de transacción \texttt{0x50} compatible con EIP-2718, con codificación RLP, hash de firma SHAKE-256 con separación de dominio, y hash de transacción que incluye firma y clave pública. La serialización y deserialización se validan con 4 tests unitarios y 5 tests E2E.
+  
+  \item[\textbf{OE3} --- Derivación de direcciones PQ.] \textbf{Cumplido.} Las direcciones post-cuánticas se derivan como $\text{SHAKE-256}(\mathit{pk}, 32)[12{:}32]$, proporcionando separación criptográfica de dominios respecto a las direcciones clásicas ($\text{Keccak-256}$). La derivación se implementa tanto en pq-reth como en pq-wallet, y se verifica mediante tests unitarios y E2E.
+  
+  \item[\textbf{OE4} --- Opcode PQHASH y precompilado ML-DSA.] \textbf{Cumplido.} El opcode \texttt{PQHASH} (\texttt{0x21}) computa SHAKE-256 con un modelo de gas idéntico a \texttt{KECCAK256}. El precompilado ML-DSA-65 (\texttt{0x0100}) verifica firmas con un coste calibrado de 3.450 gas. Se deshabilitaron 13 precompilados clásicos vulnerables. Los 6 tests del \emph{crate} \texttt{reth-pq-evm} y los 5 tests de \texttt{reth-pq-precompile} validan el funcionamiento.
+  
+  \item[\textbf{OE5} --- Consenso PoA con ML-DSA-65.] \textbf{Cumplido.} Se implementó un mecanismo Proof of Authority con sellado de bloques ML-DSA-65 y rotación round-robin. El clúster de 3 validadores produce bloques correctamente, con drift $\leq$ 2 bloques y convergencia de estado verificada en los tests multi-nodo.
+  
+  \item[\textbf{OE6} --- Wallet PQ (CLI y TUI).] \textbf{Cumplido.} Se desarrolló un wallet con 9 comandos CLI y 4 pestañas TUI (Wallet, Transactions, Blocks, Network). Soporta generación de claves, keystore cifrado (AES-256-GCM + Argon2id), firma y envío de transacciones, despliegue de contratos y consultas de estado. Se incluye además un sembrador de cadena para demostración.
+  
+  \item[\textbf{OE7} --- Suite E2E.] \textbf{Cumplido.} La suite ejecuta 15 escenarios en 6 fases: identidad de cadena (3), consenso PoA (2), comisiones EIP-1559 (2), transacciones PQ (3), contratos inteligentes (2) y multi-nodo (3). Todos los tests pasan satisfactoriamente tanto en configuración single-node (12/12) como multi-nodo (15/15). La suite se puede ejecutar en modo local, Kubernetes o contra un nodo externo.
+  
+  \item[\textbf{OE8} --- Propuesta de EIP.] \textbf{Cumplido.} Se redactó una propuesta de EIP completa (\texttt{eips/eip-pq-tx.md}) siguiendo el formato estándar, con secciones de Abstract, Motivation, Specification, Rationale, Backwards Compatibility, Test Cases, Reference Implementation y Security Considerations. El estado actual es \emph{Draft}, preparada para presentación formal a la comunidad Ethereum.
+\end{description}
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Conclusiones generales}
+\label{sec:conclusiones_generales}
+%% ═══════════════════════════════════════════════════════════
+
+Este trabajo demuestra que la migración de la capa de transacciones de un cliente de ejecución Ethereum a criptografía post-cuántica basada en retículos (ML-DSA-65) es \textbf{técnicamente viable} con la tecnología actual. Las principales conclusiones son:
+
+\begin{enumerate}
+  \item \textbf{La verificación post-cuántica es más rápida que la clásica.} ML-DSA-65 verifica firmas un 14\% más rápido que ECDSA/secp256k1 (42 $\mu$s vs.\ 49,2 $\mu$s), lo que significa que la migración no penaliza el rendimiento de los nodos validadores ---la operación más crítica para la escalabilidad de la red.
+  
+  \item \textbf{El coste principal es el tamaño, no el cómputo.} Las transacciones post-cuánticas son $\sim$87$\times$ más grandes que las clásicas (5,3 KB vs.\ 61 B), lo que reduce el throughput teórico en un 51\%. Este es un coste significativo pero manejable, mitigable mediante registros de claves públicas y compresión.
+  
+  \item \textbf{La coexistencia clásica/PQ es posible.} El tipo de transacción \texttt{0x50} coexiste con los tipos \texttt{0x00}--\texttt{0x04} bajo EIP-2718, permitiendo una migración gradual donde los usuarios adoptan cuentas post-cuánticas voluntariamente.
+  
+  \item \textbf{El consenso post-cuántico requiere un nuevo paradigma.} El PoA con ML-DSA-65 funciona para conjuntos pequeños de validadores, pero la escalabilidad a miles de validadores (necesaria para PoS) requiere esquemas de agregación de firmas post-cuánticas que no existen de forma estandarizada.
+  
+  \item \textbf{La amenaza cuántica es real y el tiempo de migración es largo.} Las simulaciones de Shor y Grover confirman experimentalmente las vulnerabilidades teóricas. Con un horizonte de 10--15 años para un CRQC y una migración estimada en 6--13 años, el inicio de la planificación es urgente.
+\end{enumerate}
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Limitaciones}
+\label{sec:limitaciones}
+%% ═══════════════════════════════════════════════════════════
+
+\begin{enumerate}
+  \item \textbf{Cadena privada, no mainnet.} La implementación se ejecuta en una red privada con 3 validadores y 15 cuentas prefinanciadas. No se ha probado con el volumen de transacciones ni el número de nodos de Ethereum mainnet.
+  
+  \item \textbf{Consenso PoA, no PoS.} El mecanismo Proof of Authority no es escalable a centenares de miles de validadores. La migración del consenso Proof of Stake requiere agregación de firmas post-cuánticas.
+  
+  \item \textbf{Gas price simplificado.} El tipo \texttt{0x50} usa un campo \texttt{gas\_price} plano en lugar del modelo EIP-1559 completo (\texttt{max\_fee\_per\_gas}, \texttt{max\_priority\_fee\_per\_gas}).
+  
+  \item \textbf{Sin registro de claves públicas.} Cada transacción incluye la clave pública completa (1.952 bytes). Un registro on-chain permitiría eliminar este overhead tras la primera transacción.
+  
+  \item \textbf{Simulaciones sobre modelos reducidos.} Las simulaciones cuánticas operan sobre curvas y hashes reducidos ($\mathbb{F}_{17}$, 4-bit Keccak) que demuestran los principios pero no prueban la viabilidad computacional real de los ataques sobre secp256k1 o Keccak-256.
+  
+  \item \textbf{Sin auditoría formal de la implementación criptográfica.} La biblioteca ml-lattice-rs envuelve la implementación RustCrypto (\texttt{ml-dsa}), que es una implementación de referencia pero no ha sido auditada formalmente para uso en producción.
+  
+  \item \textbf{Un solo cliente de ejecución.} La migración real de Ethereum requiere que todos los clientes (geth, Nethermind, Besu, Erigon, reth) implementen el mismo protocolo.
+\end{enumerate}
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Trabajos futuros}
+\label{sec:futuro}
+%% ═══════════════════════════════════════════════════════════
+
+\begin{enumerate}
+  \item \textbf{Registro de claves públicas on-chain.} Implementar un contrato de registro que mapee $\text{dirección} \to \text{clave pública}$, permitiendo que las transacciones posteriores a la primera omitan la clave pública (ahorro de 1.952 bytes por transacción). Esto requiere una extensión del formato \texttt{0x50} o un nuevo tipo de transacción.
+  
+  \item \textbf{Modelo de comisiones EIP-1559.} Extender el tipo \texttt{0x50} con los campos de comisión dinámica (\texttt{max\_fee\_per\_gas} y \texttt{max\_priority\_fee\_per\_gas}) para compatibilidad completa con el mecanismo de Ethereum.
+  
+  \item \textbf{Agregación de firmas post-cuánticas.} Investigar esquemas de agregación basados en STARKs o retículos multilineales que permitan comprimir las atestaciones de miles de validadores en una sola firma compacta. Este es el principal obstáculo para la migración del consenso PoS.
+  
+  \item \textbf{Compresión de claves y firmas ML-DSA.} NIST está evaluando estándares de compresión para claves ML-DSA. La aplicación de estas técnicas podría reducir el tamaño de la clave pública y mejorar el throughput de la red.
+  
+  \item \textbf{Pruebas de carga a escala.} Ejecutar benchmarks con centenares de transacciones por bloque en un clúster de 10+ nodos para validar el rendimiento bajo condiciones más cercanas a producción.
+  
+  \item \textbf{Migración de la capa de consenso.} Diseñar un mecanismo de consenso post-cuántico compatible con la capa de consenso de Ethereum (Beacon Chain), posiblemente basado en firmas de umbral post-cuánticas.
+  
+  \item \textbf{Agilidad criptográfica.} Diseñar un mecanismo de negociación de algoritmos que permita actualizar el esquema de firma (p.ej., de ML-DSA-65 a ML-DSA-87, o a un esquema basado en hash) sin requerir un \emph{hard fork}.
+  
+  \item \textbf{Presentación formal del EIP.} Someter la propuesta \texttt{eip-pq-tx.md} al proceso formal de EIP de Ethereum, incluyendo discusión en Ethereum Magicians, revisión por editores y presentación en All Core Devs.
+  
+  \item \textbf{Interoperabilidad cross-chain.} Diseñar puentes (\emph{bridges}) que permitan la verificación de firmas ML-DSA-65 desde otras cadenas EVM-compatibles, y evaluar la integración con rollups que ya utilizan pruebas de conocimiento cero.
+\end{enumerate}

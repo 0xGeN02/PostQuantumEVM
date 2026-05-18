@@ -101,7 +101,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
     let mut last_tick = Instant::now();
 
     loop {
-        // Draw
+        // Draw (needs &mut app for TableState)
         terminal.draw(|f| ui::draw(f, app))?;
 
         // Event polling
@@ -126,7 +126,25 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                             }
                         }
                     } else if should_refresh {
-                        rt.block_on(app.refresh());
+                        // Handle search: if search_input is non-empty and
+                        // search_mode just ended, execute the search
+                        if !app.search_input.is_empty() && !app.search_mode {
+                            let query = app.search_input.clone();
+                            let needs_refresh = rt.block_on(app.search_block(&query));
+                            if needs_refresh {
+                                rt.block_on(app.refresh());
+                                app.search_input.clear();
+                            } else {
+                                // Search failed, re-enter search mode to show error
+                                app.search_mode = true;
+                            }
+                        } else if app.showing_address_viewer && !app.address_input.is_empty() && app.address_lookup.is_none() {
+                            // Handle address lookup
+                            let addr = app.address_input.clone();
+                            rt.block_on(app.lookup_address(&addr));
+                        } else {
+                            rt.block_on(app.refresh());
+                        }
                     }
                 }
             }

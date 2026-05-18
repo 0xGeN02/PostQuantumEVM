@@ -11,7 +11,7 @@ use ratatui::{
 use crate::app::{ActionMode, App, Tab};
 
 /// Render the full UI.
-pub fn draw(f: &mut Frame, app: &App) {
+pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -32,8 +32,12 @@ pub fn draw(f: &mut Frame, app: &App) {
 
     draw_status_bar(f, app, chunks[2]);
 
-    // ─── Overlays (drawn on top) ───
-    if app.asking_passphrase {
+    // ─── Overlays (drawn on top, in priority order) ───
+    if app.search_mode {
+        draw_search_overlay(f, app);
+    } else if app.showing_address_viewer {
+        draw_address_viewer_overlay(f, app);
+    } else if app.asking_passphrase {
         draw_passphrase_overlay(f, app);
     } else if app.action != ActionMode::None {
         draw_action_overlay(f, app);
@@ -203,12 +207,12 @@ fn draw_wallet_tab(f: &mut Frame, app: &App, area: Rect) {
         Line::from(vec![
             Span::styled("  Classical:  ", Style::default().fg(Color::Red)),
             Span::styled(addr_keccak, Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
-            Span::styled("  ← would be if Ethereum", Style::default().fg(Color::DarkGray)),
+            Span::styled("  <- would be if Ethereum", Style::default().fg(Color::DarkGray)),
         ]),
         Line::from(vec![
             Span::styled("  PQ (ours):  ", Style::default().fg(Color::Green)),
             Span::styled(addr_shake, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-            Span::styled("  ← actual address", Style::default().fg(Color::DarkGray)),
+            Span::styled("  <- actual address", Style::default().fg(Color::DarkGray)),
         ]),
     ];
 
@@ -217,7 +221,7 @@ fn draw_wallet_tab(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(cmp, chunks[2]);
 }
 
-fn draw_transactions_tab(f: &mut Frame, app: &App, area: Rect) {
+fn draw_transactions_tab(f: &mut Frame, app: &mut App, area: Rect) {
     if app.transactions.is_empty() {
         let msg = Paragraph::new(vec![
             Line::from(""),
@@ -250,7 +254,7 @@ fn draw_transactions_tab(f: &mut Frame, app: &App, area: Rect) {
         .map(|h| Cell::from(*h).style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
     let header = Row::new(header_cells).height(1);
 
-    let rows = app.transactions.iter().enumerate().map(|(i, tx)| {
+    let rows: Vec<Row> = app.transactions.iter().enumerate().map(|(i, tx)| {
         let style = if i == app.tx_selected {
             Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
         } else {
@@ -272,15 +276,15 @@ fn draw_transactions_tab(f: &mut Frame, app: &App, area: Rect) {
         let to_display = match tx.kind() {
             crate::app::TxKind::Deploy => {
                 tx.contract_address.as_ref().map(|a| {
-                    if a.len() > 14 { format!("→{}..{}", &a[..8], &a[a.len()-4..]) }
-                    else { format!("→{a}") }
+                    if a.len() > 14 { format!("->{}..{}", &a[..8], &a[a.len()-4..]) }
+                    else { format!("->{a}") }
                 }).unwrap_or_else(|| "CREATING...".to_string())
             }
             _ => {
                 tx.to.as_ref().map(|t| {
                     if t.len() > 14 { format!("{}..{}", &t[..8], &t[t.len()-4..]) }
                     else { t.clone() }
-                }).unwrap_or_else(|| "—".to_string())
+                }).unwrap_or_else(|| "--".to_string())
             }
         };
 
@@ -295,7 +299,7 @@ fn draw_transactions_tab(f: &mut Frame, app: &App, area: Rect) {
             Cell::from(tx.tx_type.clone()),
         ])
         .style(style)
-    });
+    }).collect();
 
     let table = Table::new(
         rows,
@@ -309,9 +313,16 @@ fn draw_transactions_tab(f: &mut Frame, app: &App, area: Rect) {
         ],
     )
     .header(header)
-    .block(Block::default().borders(Borders::ALL).title(" Transactions (PQ type 0x50) "));
+    .row_highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+    .block(Block::default().borders(Borders::ALL).title(format!(
+        " Transactions (PQ type 0x50) [{}/{}] ",
+        app.tx_selected + 1,
+        app.transactions.len()
+    )));
 
-    f.render_widget(table, chunks[0]);
+    // Sync TableState with selection
+    app.tx_table_state.select(Some(app.tx_selected));
+    f.render_stateful_widget(table, chunks[0], &mut app.tx_table_state);
 
     // ─── Tx detail panel ───
     if let Some(tx) = app.transactions.get(app.tx_selected) {
@@ -358,7 +369,7 @@ fn draw_transactions_tab(f: &mut Frame, app: &App, area: Rect) {
             crate::app::TxKind::ContractCall => {
                 detail.push(Line::from(vec![
                     Span::styled("  To:         ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(tx.to.as_deref().unwrap_or("—"), Style::default().fg(Color::White)),
+                    Span::styled(tx.to.as_deref().unwrap_or("--"), Style::default().fg(Color::White)),
                 ]));
                 if let Some(selector) = tx.function_selector() {
                     detail.push(Line::from(vec![
@@ -371,7 +382,7 @@ fn draw_transactions_tab(f: &mut Frame, app: &App, area: Rect) {
             crate::app::TxKind::Transfer => {
                 detail.push(Line::from(vec![
                     Span::styled("  To:         ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(tx.to.as_deref().unwrap_or("—"), Style::default().fg(Color::White)),
+                    Span::styled(tx.to.as_deref().unwrap_or("--"), Style::default().fg(Color::White)),
                 ]));
             }
         }
@@ -387,12 +398,12 @@ fn draw_transactions_tab(f: &mut Frame, app: &App, area: Rect) {
         ]));
 
         let detail_widget = Paragraph::new(detail)
-            .block(Block::default().borders(Borders::ALL).title(" Tx Detail (↑/↓ to navigate) "));
+            .block(Block::default().borders(Borders::ALL).title(" Tx Detail (Up/Down to navigate) "));
         f.render_widget(detail_widget, chunks[1]);
     }
 }
 
-fn draw_blocks_tab(f: &mut Frame, app: &App, area: Rect) {
+fn draw_blocks_tab(f: &mut Frame, app: &mut App, area: Rect) {
     if app.blocks.is_empty() {
         let msg = Paragraph::new(vec![
             Line::from(""),
@@ -406,22 +417,22 @@ fn draw_blocks_tab(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    // Split: table on top, detail on bottom
+    // Split: table on top, detail + seal on bottom
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(10),    // block list
-            Constraint::Length(10), // block detail
+            Constraint::Length(16), // block detail + seal viewer
         ])
         .split(area);
 
     // ─── Block table ───
-    let header_cells = ["#", "Hash", "Txs", "Gas Used", "Gas %", "Base Fee", "Timestamp"]
+    let header_cells = ["#", "Hash", "Txs", "Gas Used", "Gas %", "Base Fee", "Seal", "Timestamp"]
         .iter()
         .map(|h| Cell::from(*h).style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
     let header = Row::new(header_cells).height(1);
 
-    let rows = app.blocks.iter().enumerate().map(|(i, blk)| {
+    let rows: Vec<Row> = app.blocks.iter().enumerate().map(|(i, blk)| {
         let style = if i == app.block_selected {
             Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
         } else {
@@ -443,6 +454,9 @@ fn draw_blocks_tab(f: &mut Frame, app: &App, area: Rect) {
         let base_fee_gwei = blk.base_fee as f64 / 1e9;
         let timestamp_str = format_timestamp(blk.timestamp);
 
+        // Seal status indicator
+        let seal_info = seal_summary(&blk.extra_data);
+
         Row::new(vec![
             Cell::from(format!("{}", blk.number)),
             Cell::from(hash_short),
@@ -450,10 +464,25 @@ fn draw_blocks_tab(f: &mut Frame, app: &App, area: Rect) {
             Cell::from(format_gas(blk.gas_used)),
             Cell::from(gas_pct),
             Cell::from(format!("{:.2} Gwei", base_fee_gwei)),
+            Cell::from(seal_info),
             Cell::from(timestamp_str),
         ])
         .style(style)
-    });
+    }).collect();
+
+    // Page info for title
+    let page_info = if app.block_page_end.is_some() {
+        let first = app.blocks.last().map(|b| b.number).unwrap_or(0);
+        let last = app.blocks.first().map(|b| b.number).unwrap_or(0);
+        format!(" Blocks #{}-#{} (PgUp/PgDn to page) ", first, last)
+    } else {
+        format!(
+            " Blocks -- Latest #{} [{}/{}] (PgUp/PgDn to page) ",
+            app.block_number,
+            app.block_selected + 1,
+            app.blocks.len()
+        )
+    };
 
     let table = Table::new(
         rows,
@@ -464,19 +493,30 @@ fn draw_blocks_tab(f: &mut Frame, app: &App, area: Rect) {
             Constraint::Length(10),
             Constraint::Length(7),
             Constraint::Length(12),
-            Constraint::Min(12),
+            Constraint::Length(10),
+            Constraint::Min(10),
         ],
     )
     .header(header)
-    .block(Block::default().borders(Borders::ALL).title(format!(
-        " Blocks — Latest #{} ",
-        app.block_number
-    )));
+    .row_highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
+    .block(Block::default().borders(Borders::ALL).title(page_info));
 
-    f.render_widget(table, chunks[0]);
+    // Sync TableState with selection
+    app.block_table_state.select(Some(app.block_selected));
+    f.render_stateful_widget(table, chunks[0], &mut app.block_table_state);
 
-    // ─── Block detail panel ───
+    // ─── Block detail + Seal viewer panel ───
     if let Some(blk) = app.blocks.get(app.block_selected) {
+        // Split detail area: left = block info, right = seal viewer
+        let detail_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(45), // block detail
+                Constraint::Percentage(55), // seal viewer
+            ])
+            .split(chunks[1]);
+
+        // Left: block detail
         let detail = vec![
             Line::from(vec![
                 Span::styled("  Block:     ", Style::default().fg(Color::DarkGray)),
@@ -484,7 +524,7 @@ fn draw_blocks_tab(f: &mut Frame, app: &App, area: Rect) {
             ]),
             Line::from(vec![
                 Span::styled("  Hash:      ", Style::default().fg(Color::DarkGray)),
-                Span::styled(&blk.hash, Style::default().fg(Color::Cyan)),
+                Span::styled(truncate_hash(&blk.hash, 44), Style::default().fg(Color::Cyan)),
             ]),
             Line::from(vec![
                 Span::styled("  Miner:     ", Style::default().fg(Color::DarkGray)),
@@ -501,7 +541,7 @@ fn draw_blocks_tab(f: &mut Frame, app: &App, area: Rect) {
             Line::from(vec![
                 Span::styled("  Base fee:  ", Style::default().fg(Color::DarkGray)),
                 Span::styled(
-                    format!("{:.4} Gwei ({} wei)", blk.base_fee as f64 / 1e9, blk.base_fee),
+                    format!("{:.4} Gwei", blk.base_fee as f64 / 1e9),
                     Style::default().fg(Color::White),
                 ),
             ]),
@@ -509,11 +549,116 @@ fn draw_blocks_tab(f: &mut Frame, app: &App, area: Rect) {
                 Span::styled("  Txs:       ", Style::default().fg(Color::DarkGray)),
                 Span::styled(format!("{}", blk.tx_count), Style::default().fg(Color::Green)),
             ]),
+            Line::from(vec![
+                Span::styled("  Time:      ", Style::default().fg(Color::DarkGray)),
+                Span::styled(format_timestamp(blk.timestamp), Style::default().fg(Color::White)),
+            ]),
         ];
 
         let detail_widget = Paragraph::new(detail)
-            .block(Block::default().borders(Borders::ALL).title(" Block Detail (↑/↓ to navigate) "));
-        f.render_widget(detail_widget, chunks[1]);
+            .block(Block::default().borders(Borders::ALL).title(" Block Detail "));
+        f.render_widget(detail_widget, detail_chunks[0]);
+
+        // Right: Seal viewer (ML-DSA-65 signature from extraData)
+        draw_seal_viewer(f, blk, detail_chunks[1]);
+    }
+}
+
+/// Draw the seal viewer panel for a block.
+fn draw_seal_viewer(f: &mut Frame, blk: &crate::app::BlockRecord, area: Rect) {
+    let extra = &blk.extra_data;
+    let raw_hex = extra.strip_prefix("0x").unwrap_or(extra);
+    let seal_bytes = raw_hex.len() / 2;
+
+    let mut lines = Vec::new();
+
+    if seal_bytes == 0 || extra == "0x" {
+        // No seal (genesis or empty)
+        lines.push(Line::from(vec![
+            Span::styled("  Seal:    ", Style::default().fg(Color::DarkGray)),
+            Span::styled("None (genesis/empty)", Style::default().fg(Color::DarkGray)),
+        ]));
+    } else if seal_bytes == 3309 {
+        // Valid ML-DSA-65 signature
+        lines.push(Line::from(vec![
+            Span::styled("  Type:    ", Style::default().fg(Color::DarkGray)),
+            Span::styled("ML-DSA-65 (CRYSTALS-Dilithium)", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("  Size:    ", Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("{seal_bytes} bytes"), Style::default().fg(Color::Magenta)),
+            Span::styled(" (3,309 = ML-DSA-65 standard)", Style::default().fg(Color::DarkGray)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("  Status:  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("SEALED", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        ]));
+        lines.push(Line::from(""));
+
+        // Show first and last bytes of the signature
+        let sig_start = if raw_hex.len() >= 64 { &raw_hex[..64] } else { raw_hex };
+        let sig_end = if raw_hex.len() >= 64 {
+            &raw_hex[raw_hex.len() - 64..]
+        } else {
+            ""
+        };
+
+        lines.push(Line::from(vec![
+            Span::styled("  Sig[..32]: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("0x{sig_start}"), Style::default().fg(Color::White)),
+        ]));
+        if !sig_end.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled("  Sig[-32:]: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("..{sig_end}"), Style::default().fg(Color::White)),
+            ]));
+        }
+
+        // Quantum safety indicator
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled("POST-QUANTUM SECURE", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        ]));
+    } else {
+        // Non-standard size
+        lines.push(Line::from(vec![
+            Span::styled("  Type:    ", Style::default().fg(Color::DarkGray)),
+            Span::styled("Unknown", Style::default().fg(Color::Yellow)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("  Size:    ", Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("{seal_bytes} bytes"), Style::default().fg(Color::Yellow)),
+            Span::styled(" (expected 3,309 for ML-DSA-65)", Style::default().fg(Color::DarkGray)),
+        ]));
+
+        // Show truncated data
+        let display = if raw_hex.len() > 80 {
+            format!("0x{}...{}", &raw_hex[..40], &raw_hex[raw_hex.len()-40..])
+        } else {
+            format!("0x{raw_hex}")
+        };
+        lines.push(Line::from(vec![
+            Span::styled("  Data:    ", Style::default().fg(Color::DarkGray)),
+            Span::styled(display, Style::default().fg(Color::White)),
+        ]));
+    }
+
+    let seal_widget = Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title(" Seal Viewer (ML-DSA-65) "));
+    f.render_widget(seal_widget, area);
+}
+
+/// Summarize the seal for the table column.
+fn seal_summary(extra_data: &str) -> String {
+    let raw = extra_data.strip_prefix("0x").unwrap_or(extra_data);
+    let bytes = raw.len() / 2;
+    if bytes == 3309 {
+        "ML-DSA".to_string()
+    } else if bytes == 0 {
+        "none".to_string()
+    } else {
+        format!("{bytes}B")
     }
 }
 
@@ -561,7 +706,7 @@ fn draw_network_tab(f: &mut Frame, app: &App, area: Rect) {
         ]),
         Line::from(""),
         Line::from(Span::styled(
-            "  ─── Consensus ───",
+            "  --- Consensus ---",
             Style::default().fg(Color::DarkGray),
         )),
         Line::from(vec![
@@ -578,7 +723,7 @@ fn draw_network_tab(f: &mut Frame, app: &App, area: Rect) {
         ]),
         Line::from(""),
         Line::from(Span::styled(
-            "  ─── Fee Model ───",
+            "  --- Fee Model ---",
             Style::default().fg(Color::DarkGray),
         )),
         Line::from(vec![
@@ -587,18 +732,18 @@ fn draw_network_tab(f: &mut Frame, app: &App, area: Rect) {
         ]),
         Line::from(vec![
             Span::styled("  Block reward: ", Style::default().fg(Color::DarkGray)),
-            Span::styled("None (PoA — no inflation)", Style::default().fg(Color::White)),
+            Span::styled("None (PoA -- no inflation)", Style::default().fg(Color::White)),
         ]),
     ];
 
     let network = Paragraph::new(info)
-        .block(Block::default().borders(Borders::ALL).title(" Network — PostQuantumEVM "));
+        .block(Block::default().borders(Borders::ALL).title(" Network -- PostQuantumEVM "));
     f.render_widget(network, area);
 }
 
 fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let status = Line::from(vec![
-        Span::styled(" ←/→ ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(" <-/-> ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
         Span::styled("Tab  ", Style::default().fg(Color::DarkGray)),
         Span::styled(" s ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
         Span::styled("Send  ", Style::default().fg(Color::DarkGray)),
@@ -606,13 +751,17 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         Span::styled("Deploy  ", Style::default().fg(Color::DarkGray)),
         Span::styled(" c ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
         Span::styled("Call  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(" / ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled("Search  ", Style::default().fg(Color::DarkGray)),
+        Span::styled(" a ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled("Addr  ", Style::default().fg(Color::DarkGray)),
         Span::styled(" r ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
         Span::styled("Refresh  ", Style::default().fg(Color::DarkGray)),
         Span::styled(" q ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
         Span::styled("Quit  ", Style::default().fg(Color::DarkGray)),
-        Span::styled("│ ", Style::default().fg(Color::DarkGray)),
+        Span::styled("| ", Style::default().fg(Color::DarkGray)),
         Span::styled(
-            if app.connected { "●" } else { "○" },
+            if app.connected { "o" } else { "x" },
             Style::default().fg(if app.connected { Color::Green } else { Color::Red }),
         ),
         Span::styled(
@@ -683,6 +832,16 @@ fn format_value_qeth(hex_val: &str) -> String {
     }
 }
 
+/// Truncate a hash/hex string to a maximum display length.
+fn truncate_hash(hash: &str, max_len: usize) -> String {
+    if hash.len() <= max_len {
+        hash.to_string()
+    } else {
+        let half = (max_len - 2) / 2;
+        format!("{}..{}", &hash[..half], &hash[hash.len() - half..])
+    }
+}
+
 // ─── Overlays ────────────────────────────────────────────────────────────────
 
 /// Calculate a centered rect of given width/height within `area`.
@@ -690,6 +849,126 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     let x = area.x + area.width.saturating_sub(width) / 2;
     let y = area.y + area.height.saturating_sub(height) / 2;
     Rect::new(x, y, width.min(area.width), height.min(area.height))
+}
+
+/// Draw the search overlay.
+fn draw_search_overlay(f: &mut Frame, app: &App) {
+    let height = if app.search_error.is_some() { 9 } else { 7 };
+    let area = centered_rect(60, height, f.area());
+    f.render_widget(Clear, area);
+
+    let mut lines = vec![
+        Line::from(""),
+        Line::from(Span::styled(
+            "  Search block by number or hash:",
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("  > ", Style::default().fg(Color::Cyan)),
+            Span::styled(&app.search_input, Style::default().fg(Color::White)),
+            Span::styled("|", Style::default().fg(Color::White)),
+        ]),
+    ];
+
+    if let Some(ref err) = app.search_error {
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::styled("  ", Style::default()),
+            Span::styled(err.as_str(), Style::default().fg(Color::Red)),
+        ]));
+    }
+
+    lines.push(Line::from(Span::styled(
+        "  [Enter] Search  [Esc] Cancel",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let popup = Paragraph::new(lines).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Cyan))
+            .title(" Search "),
+    );
+    f.render_widget(popup, area);
+}
+
+/// Draw the address viewer overlay.
+fn draw_address_viewer_overlay(f: &mut Frame, app: &App) {
+    if let Some(ref info) = app.address_lookup {
+        // Show result
+        let area = centered_rect(70, 12, f.area());
+        f.render_widget(Clear, area);
+
+        let balance_qeth = info.balance_wei as f64 / 1e18;
+        let lines = vec![
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  Address: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(&info.address, Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  Balance: ", Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("{balance_qeth:.6} qETH"), Style::default().fg(Color::Green)),
+                Span::styled(format!("  ({} wei)", info.balance_wei), Style::default().fg(Color::DarkGray)),
+            ]),
+            Line::from(vec![
+                Span::styled("  Nonce:   ", Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("{}", info.nonce), Style::default().fg(Color::White)),
+            ]),
+            Line::from(vec![
+                Span::styled("  Type:    ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    if info.is_contract { "Contract" } else { "EOA (Externally Owned Account)" },
+                    Style::default().fg(if info.is_contract { Color::Magenta } else { Color::Cyan }),
+                ),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Press any key to dismiss",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ];
+
+        let popup = Paragraph::new(lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(" Address Info "),
+        );
+        f.render_widget(popup, area);
+    } else {
+        // Input mode
+        let area = centered_rect(60, 7, f.area());
+        f.render_widget(Clear, area);
+
+        let lines = vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Enter address to look up:",
+                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  > ", Style::default().fg(Color::Cyan)),
+                Span::styled(&app.address_input, Style::default().fg(Color::White)),
+                Span::styled("|", Style::default().fg(Color::White)),
+            ]),
+            Line::from(Span::styled(
+                "  [Enter] Look up  [Esc] Cancel",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ];
+
+        let popup = Paragraph::new(lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(" Address Lookup "),
+        );
+        f.render_widget(popup, area);
+    }
 }
 
 /// Draw the passphrase input overlay.
@@ -708,7 +987,7 @@ fn draw_passphrase_overlay(f: &mut Frame, app: &App) {
         Line::from(vec![
             Span::styled("  > ", Style::default().fg(Color::Cyan)),
             Span::styled(masked, Style::default().fg(Color::Green)),
-            Span::styled("█", Style::default().fg(Color::White)),
+            Span::styled("|", Style::default().fg(Color::White)),
         ]),
         Line::from(Span::styled(
             "  [Enter] Confirm  [Esc] Cancel",
@@ -750,7 +1029,7 @@ fn draw_action_overlay(f: &mut Frame, app: &App) {
                         },
                     ),
                     if *field == 0 {
-                        Span::styled("█", Style::default().fg(Color::White))
+                        Span::styled("|", Style::default().fg(Color::White))
                     } else {
                         Span::raw("")
                     },
@@ -766,7 +1045,7 @@ fn draw_action_overlay(f: &mut Frame, app: &App) {
                         },
                     ),
                     if *field == 1 {
-                        Span::styled("█", Style::default().fg(Color::White))
+                        Span::styled("|", Style::default().fg(Color::White))
                     } else {
                         Span::raw("")
                     },
@@ -815,7 +1094,7 @@ fn draw_action_overlay(f: &mut Frame, app: &App) {
                         },
                     ),
                     if *field == 0 {
-                        Span::styled("█", Style::default().fg(Color::White))
+                        Span::styled("|", Style::default().fg(Color::White))
                     } else {
                         Span::raw("")
                     },
@@ -831,7 +1110,7 @@ fn draw_action_overlay(f: &mut Frame, app: &App) {
                         },
                     ),
                     if *field == 1 {
-                        Span::styled("█", Style::default().fg(Color::White))
+                        Span::styled("|", Style::default().fg(Color::White))
                     } else {
                         Span::raw("")
                     },
@@ -873,7 +1152,7 @@ fn draw_action_overlay(f: &mut Frame, app: &App) {
                         },
                     ),
                     if *field == 0 {
-                        Span::styled("█", Style::default().fg(Color::White))
+                        Span::styled("|", Style::default().fg(Color::White))
                     } else {
                         Span::raw("")
                     },
@@ -889,7 +1168,7 @@ fn draw_action_overlay(f: &mut Frame, app: &App) {
                         },
                     ),
                     if *field == 1 {
-                        Span::styled("█", Style::default().fg(Color::White))
+                        Span::styled("|", Style::default().fg(Color::White))
                     } else {
                         Span::raw("")
                     },
@@ -914,15 +1193,15 @@ fn draw_action_overlay(f: &mut Frame, app: &App) {
             f.render_widget(Clear, area);
 
             let (icon, color) = if *success {
-                ("✓", Color::Green)
+                ("OK", Color::Green)
             } else {
-                ("✗", Color::Red)
+                ("ERR", Color::Red)
             };
 
             let lines = vec![
                 Line::from(""),
                 Line::from(vec![
-                    Span::styled(format!("  {icon} "), Style::default().fg(color).add_modifier(Modifier::BOLD)),
+                    Span::styled(format!("  [{icon}] "), Style::default().fg(color).add_modifier(Modifier::BOLD)),
                     Span::styled(message.as_str(), Style::default().fg(Color::White)),
                 ]),
                 Line::from(""),

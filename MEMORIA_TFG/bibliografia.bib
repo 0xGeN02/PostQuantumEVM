@@ -1,0 +1,298 @@
+% =========================================================
+% Bibliografía del TFG: PostQuantumEVM
+% Compilar con Biber (backend de biblatex)
+% =========================================================
+
+%% ───────────────────────────────────────────────────────────
+%% Estándares NIST
+%% ───────────────────────────────────────────────────────────
+
+@techreport{nistfips203,
+  author       = {{National Institute of Standards and Technology}},
+  title        = {{Module-Lattice-Based Key-Encapsulation Mechanism Standard}},
+  institution  = {NIST},
+  type         = {{Federal Information Processing Standards Publication}},
+  number       = {FIPS 203},
+  year         = {2024},
+  month        = aug,
+  url          = {https://csrc.nist.gov/pubs/fips/203/final},
+  doi          = {10.6028/NIST.FIPS.203},
+}
+
+@techreport{nistfips204,
+  author       = {{National Institute of Standards and Technology}},
+  title        = {{Module-Lattice-Based Digital Signature Standard}},
+  institution  = {NIST},
+  type         = {{Federal Information Processing Standards Publication}},
+  number       = {FIPS 204},
+  year         = {2024},
+  month        = aug,
+  url          = {https://csrc.nist.gov/pubs/fips/204/final},
+  doi          = {10.6028/NIST.FIPS.204},
+}
+
+@techreport{nistfips205,
+  author       = {{National Institute of Standards and Technology}},
+  title        = {{Stateless Hash-Based Digital Signature Standard}},
+  institution  = {NIST},
+  type         = {{Federal Information Processing Standards Publication}},
+  number       = {FIPS 205},
+  year         = {2024},
+  month        = aug,
+  url          = {https://csrc.nist.gov/pubs/fips/205/final},
+  doi          = {10.6028/NIST.FIPS.205},
+}
+
+@techreport{nistpqc2024,
+  author       = {{National Institute of Standards and Technology}},
+  title        = {{Post-Quantum Cryptography: NIST Standards and Beyond}},
+  institution  = {NIST},
+  year         = {2024},
+  url          = {https://csrc.nist.gov/projects/post-quantum-cryptography},
+}
+
+%% ───────────────────────────────────────────────────────────
+%% Algoritmos cuánticos
+%% ───────────────────────────────────────────────────────────
+
+@inproceedings{shor1994algorithms,
+  author       = {Shor, Peter W.},
+  title        = {Algorithms for Quantum Computation: Discrete Logarithms and Factoring},
+  booktitle    = {Proceedings of the 35th Annual Symposium on Foundations of Computer Science (FOCS)},
+  year         = {1994},
+  pages        = {124--134},
+  publisher    = {IEEE},
+  doi          = {10.1109/SFCS.1994.365700},
+}
+
+@inproceedings{grover1996fast,
+  author       = {Grover, Lov K.},
+  title        = {A Fast Quantum Mechanical Algorithm for Database Search},
+  booktitle    = {Proceedings of the 28th Annual ACM Symposium on Theory of Computing (STOC)},
+  year         = {1996},
+  pages        = {212--219},
+  publisher    = {ACM},
+  doi          = {10.1145/237814.237866},
+}
+
+%% ───────────────────────────────────────────────────────────
+%% Criptografía basada en retículos
+%% ───────────────────────────────────────────────────────────
+
+@inproceedings{regev2005lwe,
+  author       = {Regev, Oded},
+  title        = {On Lattices, Learning with Errors, Random Linear Codes, and Cryptography},
+  booktitle    = {Proceedings of the 37th Annual ACM Symposium on Theory of Computing (STOC)},
+  year         = {2005},
+  pages        = {84--93},
+  publisher    = {ACM},
+  doi          = {10.1145/1060590.1060603},
+}
+
+%% ───────────────────────────────────────────────────────────
+%% Ethereum: especificaciones y EIPs
+%% ───────────────────────────────────────────────────────────
+
+@techreport{wood2014ethereum,
+  author       = {Wood, Gavin},
+  title        = {{Ethereum: A Secure Decentralised Generalised Transaction Ledger}},
+  year         = {2014},
+  note         = {Yellow Paper, versión actualizada periódicamente},
+  url          = {https://ethereum.github.io/yellowpaper/paper.pdf},
+}
+
+@misc{eip2718,
+  author       = {Micah Zoltu},
+  title        = {{EIP-2718: Typed Transaction Envelope}},
+  year         = {2020},
+  howpublished = {Ethereum Improvement Proposals},
+  url          = {https://eips.ethereum.org/EIPS/eip-2718},
+}
+
+@misc{eip1559,
+  author       = {Vitalik Buterin and Eric Conner and Rick Dudley and Matthew Slipper and Ian Norden and Abdelhamid Bakhta},
+  title        = {{EIP-1559: Fee Market Change for ETH 1.0 Chain}},
+  year         = {2019},
+  howpublished = {Ethereum Improvement Proposals},
+  url          = {https://eips.ethereum.org/EIPS/eip-1559},
+}
+
+@misc{eip7932,
+  author       = {{Ethereum Community}},
+  title        = {{EIP-7932: Secondary Signature Algorithms}},
+  year         = {2025},
+  howpublished = {Ethereum Improvement Proposals},
+  url          = {https://eips.ethereum.org/EIPS/eip-7932},
+}
+
+@misc{eip8051,
+  author       = {{Ethereum Community}},
+  title        = {{EIP-8051: ML-DSA Verification Precompile}},
+  year         = {2025},
+  howpublished = {Ethereum Improvement Proposals},
+  url          = {https://eips.ethereum.org/EIPS/eip-8051},
+}
+
+@misc{eip4337,
+  author       = {Vitalik Buterin and Yoav Weiss and Dror Tirosh and Shahaf Nacson and Alex Forshtat and Kristof Gazso and Tjaden Hess},
+  title        = {{ERC-4337: Account Abstraction Using Alt Mempool}},
+  year         = {2021},
+  howpublished = {Ethereum Improvement Proposals},
+  url          = {https://eips.ethereum.org/EIPS/eip-4337},
+}
+
+@misc{eip7702,
+  author       = {Vitalik Buterin and Sam Wilson and Ansgar Dietrichs and Matt Garnett},
+  title        = {{EIP-7702: Set EOA Account Code for One Transaction}},
+  year         = {2024},
+  howpublished = {Ethereum Improvement Proposals},
+  url          = {https://eips.ethereum.org/EIPS/eip-7702},
+}
+
+%% ───────────────────────────────────────────────────────────
+%% Reth
+%% ───────────────────────────────────────────────────────────
+
+@software{reth2024,
+  author       = {{Paradigm}},
+  title        = {{Reth: Modular, Contributor-Friendly and Blazing-Fast Ethereum Client Written in Rust}},
+  year         = {2024},
+  url          = {https://github.com/paradigmxyz/reth},
+}
+
+%% ───────────────────────────────────────────────────────────
+%% Blockchain y criptografía post-cuántica (corpus)
+%% ───────────────────────────────────────────────────────────
+
+@article{quantumresistance2023nature,
+  author       = {Fernández-Caramés, Tiago M. and Fraga-Lamas, Paula},
+  title        = {Quantum Resistance in Blockchain Networks},
+  journal      = {Scientific Reports},
+  volume       = {13},
+  pages        = {5765},
+  year         = {2023},
+  publisher    = {Nature Publishing Group},
+  doi          = {10.1038/s41598-023-32701-6},
+}
+
+@article{quantumsafeblockchain2018,
+  author       = {Kiktenko, Evgeniy O. and Pozhar, Nikolay O. and Anufriev, Maxim N. and Trushechkin, Anton S. and Yunusov, Ruslan R. and Kurochkin, Yuri V. and Lvovsky, Alexander I. and Fedorov, Aleksey K.},
+  title        = {Quantum-Secured Blockchain},
+  journal      = {Quantum Science and Technology},
+  volume       = {3},
+  number       = {3},
+  pages        = {035004},
+  year         = {2018},
+  doi          = {10.1088/2058-9565/aabc6b},
+}
+
+@article{surveycomparison2023,
+  author       = {Berdik, David and Otoum, Safa and Schmidt, Nikolas and Porter, Dylan and Jararweh, Yaser},
+  title        = {A Survey and Comparison of Post-Quantum and Quantum Blockchains},
+  journal      = {IEEE Access},
+  volume       = {11},
+  pages        = {116688--116703},
+  year         = {2023},
+  doi          = {10.1109/ACCESS.2023.3325258},
+}
+
+@article{quantumsafefabric2024,
+  author       = {Lee, Jaemin and Kim, Seunghyun and Park, Yongsu},
+  title        = {Quantum-Safe Blockchain in Hyperledger Fabric},
+  journal      = {IEEE Access},
+  volume       = {12},
+  pages        = {1--15},
+  year         = {2024},
+  doi          = {10.1109/ACCESS.2024.3516500},
+}
+
+@article{securecryptocurrency2018,
+  author       = {Yin, Wenlong and Wen, Qiaoyan and Li, Wenmin and Zhang, Hua and Jin, Zhengping},
+  title        = {A Secure Cryptocurrency Scheme Based on Post-Quantum Blockchain},
+  journal      = {IEEE Access},
+  volume       = {6},
+  pages        = {27205--27213},
+  year         = {2018},
+  doi          = {10.1109/ACCESS.2018.2827203},
+}
+
+@article{quantumblockchainvote2022,
+  author       = {Gao, Yun-Ling and Chen, Xiu-Bo and Xu, Gang and Yuan, Ke-Gong and Liu, Wei and Yang, Yi-Xian},
+  title        = {Quantum Blockchain Based on Asymmetric Quantum Encryption and a Stake Vote Consensus Algorithm},
+  journal      = {Scientific Reports},
+  volume       = {12},
+  pages        = {10422},
+  year         = {2022},
+  doi          = {10.1038/s41598-022-12412-0},
+}
+
+%% ───────────────────────────────────────────────────────────
+%% Análisis de recursos cuánticos
+%% ───────────────────────────────────────────────────────────
+
+@article{choosingcoordinates2025,
+  author       = {Taguchi, Yuichi and Takayasu, Atsushi},
+  title        = {Choosing Coordinate Forms for Solving {ECDLP} Using {Shor's} Algorithm},
+  journal      = {arXiv preprint},
+  year         = {2025},
+  eprint       = {2502.12441},
+  archiveprefix = {arXiv},
+  primaryclass = {quant-ph},
+  url          = {https://arxiv.org/abs/2502.12441},
+}
+
+@article{keccakquantum2024,
+  author       = {Luo, Jian and Ye, Qingfeng and Lin, Xiao-song},
+  title        = {Quantum Resource Analysis of {Keccak/SHA-3}: Classical to Quantum Using {Qiskit} Modeling},
+  journal      = {arXiv preprint},
+  year         = {2024},
+  eprint       = {2512.14759},
+  archiveprefix = {arXiv},
+  primaryclass = {quant-ph},
+  url          = {https://arxiv.org/abs/2512.14759},
+}
+
+%% ───────────────────────────────────────────────────────────
+%% Implementaciones y herramientas
+%% ───────────────────────────────────────────────────────────
+
+@online{cryspenmlkem,
+  author       = {{Cryspen}},
+  title        = {Verified {ML-KEM} ({Kyber}) in {Rust}},
+  year         = {2024},
+  url          = {https://cryspen.com/post/ml-kem-implementation/},
+}
+
+@online{mlkemseeds2024,
+  author       = {Valsorda, Filippo},
+  title        = {{ML-KEM} Seed Standardization},
+  year         = {2024},
+  url          = {https://words.filippo.io/ml-kem-seeds/},
+}
+
+@online{evmcodes,
+  title        = {{EVM} Opcodes Reference},
+  url          = {https://www.evm.codes/},
+  year         = {2024},
+}
+
+@online{ethereumdocs,
+  author       = {{Ethereum Foundation}},
+  title        = {Ethereum Developer Documentation},
+  url          = {https://ethereum.org/developers/docs},
+  year         = {2024},
+}
+
+@online{soliditydocs,
+  author       = {{Solidity Team}},
+  title        = {Solidity Documentation},
+  url          = {https://docs.soliditylang.org/},
+  year         = {2024},
+}
+
+@online{rustlang,
+  author       = {{The Rust Project}},
+  title        = {The {Rust} Programming Language},
+  url          = {https://www.rust-lang.org/},
+  year         = {2024},
+}

@@ -1,17 +1,23 @@
 # PostQuantumEVM — PoA Multi-Validator Docker Compose
 #
 # Architecture:
-#   - pq-validator-1: PoA validator (proposes blocks 0, 3, 6, ...)
-#   - pq-validator-2: PoA validator (proposes blocks 1, 4, 7, ...)
-#   - pq-validator-3: PoA validator (proposes blocks 2, 5, 8, ...)
+#   - pq-validator-1: PoA validator (proposes blocks 1, 4, 7, ...)
+#   - pq-validator-2: PoA validator (proposes blocks 2, 5, 8, ...)
+#   - pq-validator-3: PoA validator (proposes blocks 3, 6, 9, ...)
 #   - qiskit-api: Quantum simulation API
 #
 # Consensus: Round-robin PoA with ML-DSA-65 block sealing.
 # Each validator mines only on its turn (5s slot time by default).
 #
+# Multi-node mode: Validators run WITHOUT --dev so that P2P discovery
+# and block propagation are enabled. The PqNetworkBuilder uses
+# NetworkMode::Work, and PoaBlockForwarder imports peer blocks.
+#
 # Prerequisites:
 #   1. Generate validator keys: ./scripts/generate-validator-keys.sh
 #   2. Build image: docker compose build
+#   3. First run: start validator-1 alone, get its enode ID from logs,
+#      then update --trusted-peers for validators 2 and 3.
 #
 # Usage:
 #   docker compose up -d
@@ -32,18 +38,22 @@ services:
     container_name: pq-validator-1
     environment:
       - PQ_POA_CONFIG=/app/poa-config.json
+      - PQ_VALIDATOR_SK_FILE=/app/seed.hex
     command:
-      - "node"
-      - "--chain=/app/genesis.json"
-      - "--datadir=/data"
-      - "--dev"
-      - "--http"
-      - "--http.addr=0.0.0.0"
-      - "--http.port=8545"
-      - "--http.api=eth,net,web3,admin"
-      - "--http.corsdomain=*"
-      - "--port=30303"
-      - "--log.stdout.filter=info"
+      - "sh"
+      - "-c"
+      - >-
+        export PQ_VALIDATOR_SK=$(cat /app/seed.hex) &&
+        exec pq-reth node
+        --chain=/app/genesis.json
+        --datadir=/data
+        --http --http.addr=0.0.0.0 --http.port=8545
+        --http.api=eth,net,web3,admin
+        --http.corsdomain=*
+        --port=30303
+        --nat=extip:10.5.0.10
+        --disable-discovery
+        --log.stdout.filter=info
     ports:
       - "8545:8545"
       - "30303:30303"
@@ -51,6 +61,8 @@ services:
     volumes:
       - pq-validator-1-data:/data
       - ./scripts/validator-keys/poa-config-1.json:/app/poa-config.json:ro
+      - ./scripts/validator-keys/seed-1.hex:/app/seed.hex:ro
+      - ./pq-reth/bin/pq-reth/genesis.json:/app/genesis.json:ro
     networks:
       pqevm:
         ipv4_address: 10.5.0.10
@@ -70,19 +82,23 @@ services:
     container_name: pq-validator-2
     environment:
       - PQ_POA_CONFIG=/app/poa-config.json
+      - PQ_VALIDATOR_SK_FILE=/app/seed.hex
     command:
-      - "node"
-      - "--chain=/app/genesis.json"
-      - "--datadir=/data"
-      - "--dev"
-      - "--http"
-      - "--http.addr=0.0.0.0"
-      - "--http.port=8545"
-      - "--http.api=eth,net,web3"
-      - "--http.corsdomain=*"
-      - "--port=30304"
-      - "--bootnodes=enode://0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000@10.5.0.10:30303"
-      - "--log.stdout.filter=info"
+      - "sh"
+      - "-c"
+      - >-
+        export PQ_VALIDATOR_SK=$(cat /app/seed.hex) &&
+        exec pq-reth node
+        --chain=/app/genesis.json
+        --datadir=/data
+        --http --http.addr=0.0.0.0 --http.port=8545
+        --http.api=eth,net,web3
+        --http.corsdomain=*
+        --port=30304
+        --nat=extip:10.5.0.11
+        --disable-discovery
+        --trusted-peers=enode://VALIDATOR1_ENODE_ID@10.5.0.10:30303
+        --log.stdout.filter=info
     ports:
       - "8546:8545"
       - "30304:30304"
@@ -90,6 +106,8 @@ services:
     volumes:
       - pq-validator-2-data:/data
       - ./scripts/validator-keys/poa-config-2.json:/app/poa-config.json:ro
+      - ./scripts/validator-keys/seed-2.hex:/app/seed.hex:ro
+      - ./pq-reth/bin/pq-reth/genesis.json:/app/genesis.json:ro
     networks:
       pqevm:
         ipv4_address: 10.5.0.11
@@ -112,19 +130,23 @@ services:
     container_name: pq-validator-3
     environment:
       - PQ_POA_CONFIG=/app/poa-config.json
+      - PQ_VALIDATOR_SK_FILE=/app/seed.hex
     command:
-      - "node"
-      - "--chain=/app/genesis.json"
-      - "--datadir=/data"
-      - "--dev"
-      - "--http"
-      - "--http.addr=0.0.0.0"
-      - "--http.port=8545"
-      - "--http.api=eth,net,web3"
-      - "--http.corsdomain=*"
-      - "--port=30305"
-      - "--bootnodes=enode://0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000@10.5.0.10:30303"
-      - "--log.stdout.filter=info"
+      - "sh"
+      - "-c"
+      - >-
+        export PQ_VALIDATOR_SK=$(cat /app/seed.hex) &&
+        exec pq-reth node
+        --chain=/app/genesis.json
+        --datadir=/data
+        --http --http.addr=0.0.0.0 --http.port=8545
+        --http.api=eth,net,web3
+        --http.corsdomain=*
+        --port=30305
+        --nat=extip:10.5.0.12
+        --disable-discovery
+        --trusted-peers=enode://VALIDATOR1_ENODE_ID@10.5.0.10:30303
+        --log.stdout.filter=info
     ports:
       - "8547:8545"
       - "30305:30305"
@@ -132,6 +154,8 @@ services:
     volumes:
       - pq-validator-3-data:/data
       - ./scripts/validator-keys/poa-config-3.json:/app/poa-config.json:ro
+      - ./scripts/validator-keys/seed-3.hex:/app/seed.hex:ro
+      - ./pq-reth/bin/pq-reth/genesis.json:/app/genesis.json:ro
     networks:
       pqevm:
         ipv4_address: 10.5.0.12

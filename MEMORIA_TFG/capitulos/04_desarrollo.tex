@@ -1,0 +1,733 @@
+\chapter{DESARROLLO}
+\label{cap:desarrollo}
+
+Este capítulo describe el diseño e implementación de cada componente del sistema PostQuantumEVM. Se organiza en diez secciones que siguen una progresión lógica: desde la validación teórica de las amenazas cuánticas (simulación), pasando por las primitivas criptográficas y el protocolo de transacciones, hasta la infraestructura de despliegue y validación.
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Simulación cuántica (qiskit-api)}
+\label{sec:dev_qiskit}
+%% ═══════════════════════════════════════════════════════════
+
+El módulo \texttt{qiskit-api} es una API REST implementada con FastAPI (Python 3.13) y Qiskit 2.3 que expone dos simulaciones: el algoritmo de Shor aplicado al ECDLP y el algoritmo de Grover para búsqueda de preimágenes hash. Su propósito es validar experimentalmente las amenazas descritas en las Secciones~\ref{sec:shor} y~\ref{sec:grover} sobre modelos reducidos de las primitivas de Ethereum.
+
+\subsection{Curva elíptica reducida}
+
+La simulación de Shor opera sobre una curva elíptica definida en $\mathbb{F}_{17}$:
+\begin{equation}
+  E: \quad y^2 = x^3 + 7 \pmod{17}, \qquad G = (12, 1), \qquad n = 18.
+  \label{eq:toy_curve}
+\end{equation}
+
+Esta curva preserva la estructura algebraica de secp256k1 ($a = 0$, $b = 7$) pero reduce el campo primo a 17 y el orden del grupo a 18 puntos, permitiendo la simulación en un simulador clásico sin requerir qubits reales. La aritmética de curva (adición, duplicación, multiplicación escalar) se implementa en \texttt{lib/secp256k1\_toy.py} con inversión modular por el pequeño teorema de Fermat ($a^{-1} \equiv a^{p-2} \pmod{p}$).
+
+\subsection{Algoritmo de Shor para ECDLP}
+
+La simulación sigue el esquema descrito en la Sección~\ref{sec:shor}, adaptado a la curva reducida:
+
+\begin{enumerate}
+  \item \textbf{Estado de coset}: Dado $Q = k \cdot G$ con $k$ desconocido, se construye la matriz $\psi[b, a]$ que codifica el estado
+  \begin{equation}
+    \ket{\psi} = \frac{1}{\sqrt{n}} \sum_{b=0}^{n-1} \ket{(p_0 - bk) \bmod n}_a \ket{b}_b,
+  \end{equation}
+  donde $p_0$ es un índice aleatorio que fija la medición del registro de salida.
+  
+  \item \textbf{DFT modular 2D}: Se aplica la transformada discreta de Fourier bidimensional exacta sobre $\mathbb{Z}_n \times \mathbb{Z}_n$, implementada como \texttt{np.fft.fft2(psi) / n}.
+  
+  \item \textbf{Muestreo}: Se muestrean pares $(s, t)$ de la distribución de probabilidad $|F[t, s]|^2$ con un número configurable de \emph{shots} (por defecto 4.096).
+  
+  \item \textbf{Post-procesamiento}: Para cada par $(s, t)$ con $\gcd(t, n) = 1$, se calcula el candidato $k' = -s \cdot t^{-1} \bmod n$ y se selecciona el resultado mayoritario.
+\end{enumerate}
+
+La implementación incluye también un circuito pedagógico de Qiskit (\texttt{build\_circuit}) que construye el estado de coset en $2 \lceil \log_2 n \rceil$ qubits y aplica la QFT inversa. Sin embargo, la simulación numérica directa se prefiere para la recuperación de la clave, ya que el orden $n = 18$ no es potencia de 2 y la QFT de tamaño $2^{\lceil \log_2 18 \rceil} = 32$ introduce fugas espectrales que degradan la probabilidad de éxito.
+
+\subsection{Keccak reducido y algoritmo de Grover}
+
+La simulación de Grover opera sobre una versión reducida de Keccak con los siguientes parámetros:
+
+\begin{table}[htbp]
+\centering
+\caption{Parámetros del Keccak reducido para la simulación de Grover.}
+\label{tab:toy_keccak}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Parámetro} & \textbf{Keccak reducido} & \textbf{Keccak-256 real} \\
+\midrule
+Estado ($b$) & 8 bits & 1.600 bits \\
+Tasa ($r$) & 4 bits & 1.088 bits \\
+Capacidad ($c$) & 4 bits & 512 bits \\
+Salida & 4 bits & 256 bits \\
+Rondas & 2 & 24 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Cada ronda aplica tres pasos de la permutación Keccak: $\rho$ (rotación cíclica), $\chi$ (no linealidad: $A_i \oplus (\neg A_{i+1} \wedge A_{i+2})$) e $\iota$ (adición de constante de ronda). Los pasos $\theta$ y $\pi$ se omiten por la dimensión reducida del estado.
+
+El circuito de Grover se construye con $n = 4$ qubits (espacio de búsqueda $N = 16$):
+
+\begin{enumerate}
+  \item \textbf{Superposición uniforme}: $H^{\otimes 4}\ket{0000}$.
+  \item \textbf{Oráculo de fase}: Para cada preimagen conocida del hash objetivo, se marcan los estados correspondientes invirtiendo su fase mediante puertas X selectivas y una puerta Z multicontrolada (implementada como $H \cdot \text{MCX} \cdot H$ sobre el último qubit).
+  \item \textbf{Operador de difusión}: $2\ket{s}\bra{s} - I$ (inversión respecto a la media).
+  \item \textbf{Iteraciones}: $\left\lfloor \frac{\pi}{4}\sqrt{N/M} \right\rfloor$, donde $M$ es el número de preimágenes.
+\end{enumerate}
+
+El circuito se ejecuta en el simulador Qiskit Aer y devuelve la distribución de mediciones, validando la aceleración cuadrática descrita en la Ecuación~\ref{eq:grover_prob}.
+
+\subsection{Endpoints REST}
+
+\begin{table}[htbp]
+\centering
+\caption{Endpoints de la API de simulación cuántica.}
+\label{tab:qiskit_endpoints}
+\begin{tabular}{@{}llL{7cm}@{}}
+\toprule
+\textbf{Método} & \textbf{Ruta} & \textbf{Descripción} \\
+\midrule
+\texttt{GET} & \texttt{/shor/curve} & Parámetros de la curva y puntos del subgrupo \\
+\texttt{POST} & \texttt{/shor/ecdlp} & Ejecuta ataque Shor sobre $Q = k \cdot G$; devuelve $k$ recuperado \\
+\texttt{GET} & \texttt{/grover/lookup} & Tabla completa del Keccak reducido (16 entradas) \\
+\texttt{POST} & \texttt{/grover/keccak} & Ejecuta búsqueda de preimagen Grover; devuelve preimagen(es) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Biblioteca criptográfica (ml-lattice-rs)}
+\label{sec:dev_mllattice}
+%% ═══════════════════════════════════════════════════════════
+
+La biblioteca \texttt{ml-lattice-rs} es un \emph{workspace} Cargo con dos \emph{crates}: \texttt{dilithium} (ML-DSA, FIPS-204) y \texttt{kyber} (ML-KEM, FIPS-203). Se distribuye como submódulo Git y es la dependencia criptográfica compartida por \texttt{pq-reth} y \texttt{pq-wallet}.
+
+\subsection{ML-DSA (FIPS-204)}
+
+El \emph{crate} \texttt{dilithium} envuelve la implementación RustCrypto (\texttt{ml-dsa 0.1.0-rc.8}), exponiendo tres niveles de seguridad con una interfaz uniforme:
+
+\begin{lstlisting}[style=rustcode, caption={Interfaz de ml-lattice-rs para ML-DSA-65.}, label={lst:mldsa_api}]
+pub fn keygen() -> SigningKey<MlDsa65>
+pub fn sign(sk: &SigningKey<MlDsa65>, msg: &[u8])
+    -> Signature<MlDsa65>
+pub fn verify(
+    vk: &VerifyingKey<MlDsa65>,
+    msg: &[u8],
+    sig: &Signature<MlDsa65>,
+) -> Result<(), DilithiumError>
+\end{lstlisting}
+
+La generación de claves utiliza \texttt{SysRng} (CSPRNG del sistema operativo vía \texttt{getrandom 0.4}) para obtener la semilla de 32 bytes que se expande internamente con SHAKE-256 para generar la matriz $\mathbf{A} \in R_q^{6 \times 5}$ y los vectores secretos $\mathbf{s}_1, \mathbf{s}_2$.
+
+La firma es determinista (sin nonce aleatorio), y la verificación delega en el \emph{trait} \texttt{Verifier} de RustCrypto, que implementa la verificación completa descrita en la Sección~\ref{sec:mldsa}: recálculo de $\mathbf{w}' = \mathbf{A}\mathbf{z} - c\mathbf{t}$, extracción de bits altos y comparación del desafío.
+
+\subsection{ML-KEM (FIPS-203)}
+
+Aunque este trabajo se centra en firmas digitales, el \emph{crate} \texttt{kyber} proporciona encapsulación de claves para uso futuro (p.ej., canales seguros entre nodos). La API expone tres niveles con la interfaz \texttt{keygen()}, \texttt{encapsulate()}, \texttt{decapsulate()}.
+
+\subsection{SHAKE-256}
+
+No existe una implementación independiente de SHAKE-256 en \texttt{ml-lattice-rs}. La funcionalidad SHAKE-256 utilizada para derivación de direcciones y hashes de transacción se obtiene del \emph{crate} \texttt{sha3} (también de RustCrypto), importado directamente por \texttt{pq-reth} y \texttt{pq-wallet}.
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Tipo de transacción PQ (\texttt{0x50})}
+\label{sec:dev_tx}
+%% ═══════════════════════════════════════════════════════════
+
+El \emph{crate} \texttt{reth-pq-primitives} define el tipo de transacción post-cuántica como una extensión de EIP-2718. Los tipos principales son:
+
+\begin{lstlisting}[style=rustcode, caption={Tipos de transacción PQ.}, label={lst:pq_tx_types}]
+pub const PQ_TX_TYPE: u8 = 0x50;
+
+pub struct PqTransactionRequest {
+    pub nonce: u64,
+    pub to: Option<Address>,
+    pub value: u128,
+    pub gas_limit: u64,
+    pub gas_price: u128,
+    pub input: Bytes,
+    pub chain_id: u64,
+}
+
+pub struct PqSignedTransaction {
+    pub tx: PqTransactionRequest,
+    pub signature: PqSignature,   // 3.309 bytes
+    pub public_key: PqPublicKey,  // 1.952 bytes
+    pub hash: B256,               // SHAKE-256
+}
+\end{lstlisting}
+
+\subsection{Hash de firma}
+
+El hash de firma se calcula con SHAKE-256 sobre una concatenación determinista de los campos de la transacción, precedidos por el byte de tipo \texttt{0x50} como separación de dominio:
+
+\begin{equation}
+  h_{\text{sign}} = \text{SHAKE-256}(
+    \underbrace{\texttt{0x50}}_{\text{tipo}} \|
+    \underbrace{\texttt{chain\_id}}_{\text{8B}} \|
+    \underbrace{\texttt{nonce}}_{\text{8B}} \|
+    \underbrace{\texttt{gas\_price}}_{\text{16B}} \|
+    \underbrace{\texttt{gas\_limit}}_{\text{8B}} \|
+    \underbrace{f_{\texttt{to}} \| [\texttt{to}]}_{\text{1B [+ 20B]}} \|
+    \underbrace{\texttt{value}}_{\text{16B}} \|
+    \texttt{input}
+  , 32)
+\end{equation}
+
+donde todos los campos numéricos se codifican en \emph{big-endian} y $f_{\texttt{to}}$ es un byte indicador (\texttt{0x01} si \texttt{to} está presente, \texttt{0x00} para creación de contrato).
+
+\subsection{Hash de transacción}
+
+El hash de transacción identifica unívocamente la transacción firmada:
+\begin{equation}
+  h_{\text{tx}} = \text{SHAKE-256}(\texttt{0x50} \| h_{\text{sign}} \| \sigma \| \mathit{pk}, 32),
+\end{equation}
+donde $\sigma$ es la firma ML-DSA-65 (3.309 bytes) y $\mathit{pk}$ la clave pública (1.952 bytes).
+
+\subsection{Derivación de direcciones}
+
+Las direcciones post-cuánticas se derivan como los últimos 20 bytes del hash SHAKE-256 de la clave pública:
+\begin{equation}
+  \texttt{address} = \text{SHAKE-256}(\mathit{pk}, 32)[12{:}32].
+  \label{eq:pq_address}
+\end{equation}
+
+\subsection{Codificación RLP}
+
+La serialización sigue el formato EIP-2718:
+\begin{equation}
+  \texttt{0x50} \| \text{RLP}([\texttt{chain\_id}, \texttt{nonce}, \texttt{gas\_price}, \texttt{gas\_limit}, \texttt{to}, \texttt{value}, \texttt{input}, \sigma, \mathit{pk}])
+\end{equation}
+
+El \emph{crate} \texttt{reth-pq-primitives/src/rlp.rs} implementa los \emph{traits} \texttt{Encodable} y \texttt{Decodable} de \texttt{alloy-rlp} con validación estricta: la firma debe tener exactamente 3.309 bytes y la clave pública exactamente 1.952 bytes.
+
+\subsection{Recuperación del remitente}
+
+A diferencia de ECDSA, ML-DSA-65 no soporta recuperación de clave pública. El remitente se determina en tres pasos:
+\begin{enumerate}
+  \item Verificar $\textsf{ML-DSA-65.Verify}(\mathit{pk}, h_{\text{sign}}, \sigma) = \text{true}$.
+  \item Calcular $\texttt{sender} = \text{SHAKE-256}(\mathit{pk}, 32)[12{:}32]$.
+  \item Si la verificación falla, rechazar la transacción.
+\end{enumerate}
+
+La Figura~\ref{fig:tx_flow} muestra el flujo completo de una transacción post-cuántica desde la firma en el wallet hasta su inclusión en un bloque.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  step/.style={draw, rounded corners, minimum width=2cm, minimum height=0.8cm, align=center, font=\footnotesize, fill=#1},
+  arr/.style={-{Stealth[length=4pt]}, thick},
+  node distance=0.4cm
+]
+
+% Row 1: Wallet
+\node[step=orange!15] (keygen) at (0, 0) {Keygen\\ML-DSA-65};
+\node[step=orange!15, right=of keygen] (build) {Construir\\TX request};
+\node[step=orange!15, right=of build] (hash) {SHAKE-256\\signing hash};
+\node[step=orange!15, right=of hash] (sign) {ML-DSA-65\\Sign};
+\node[step=orange!15, right=of sign] (rlp) {RLP encode\\0x50 || rlp([...])};
+
+% Row 2: Node
+\node[step=green!15, below=0.8cm of keygen] (recv) {JSON-RPC\\eth\_sendRawTx};
+\node[step=green!15, right=of recv] (decode) {RLP decode\\validar formato};
+\node[step=green!15, right=of decode] (verify) {ML-DSA-65\\Verify};
+\node[step=green!15, right=of verify] (pool) {Mempool\\ordenar por gas};
+\node[step=green!15, right=of pool] (block) {Incluir\\en bloque};
+
+% Arrows row 1
+\draw[arr] (keygen) -- (build);
+\draw[arr] (build) -- (hash);
+\draw[arr] (hash) -- (sign);
+\draw[arr] (sign) -- (rlp);
+
+% Arrow between rows
+\draw[arr] (rlp.south) -- ++(0, -0.3) -| (recv.north);
+
+% Arrows row 2
+\draw[arr] (recv) -- (decode);
+\draw[arr] (decode) -- (verify);
+\draw[arr] (verify) -- (pool);
+\draw[arr] (pool) -- (block);
+
+% Layer labels
+\node[font=\footnotesize\bfseries, anchor=east] at (-1.3, 0) {Wallet};
+\node[font=\footnotesize\bfseries, anchor=east] at (-1.3, -1.6) {Nodo};
+
+\end{tikzpicture}
+\caption{Flujo de una transacción post-cuántica: desde la generación de claves y firma en el wallet hasta la verificación e inclusión en un bloque en el nodo.}
+\label{fig:tx_flow}
+\end{figure}
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{EVM post-cuántica}
+\label{sec:dev_evm}
+%% ═══════════════════════════════════════════════════════════
+
+El \emph{crate} \texttt{reth-pq-evm} extiende la máquina virtual de Ethereum con dos nuevas primitivas y deshabilita las operaciones criptográficas vulnerables.
+
+\subsection{Opcode PQHASH (\texttt{0x21})}
+
+Se introduce un nuevo opcode adyacente a \texttt{KECCAK256} (\texttt{0x20}):
+
+\begin{table}[htbp]
+\centering
+\caption{Especificación del opcode PQHASH.}
+\label{tab:pqhash_spec}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Propiedad} & \textbf{Valor} \\
+\midrule
+Opcode & \texttt{0x21} \\
+Mnemónico & \texttt{PQHASH} \\
+Entrada (pila) & \texttt{offset}, \texttt{length} \\
+Salida (pila) & \texttt{hash} (256 bits) \\
+Gas base & 30 \\
+Gas por palabra & 6 por cada 32 bytes (igual que \texttt{KECCAK256}) \\
+Semántica & $\text{SHAKE-256}(\texttt{memory}[\texttt{offset}..\texttt{offset}+\texttt{length}], 32)$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El opcode se inserta en la tabla de instrucciones de \texttt{revm} dentro del método \texttt{PqEvmFactory::create\_evm()}, reutilizando la infraestructura de expansión de memoria y la lógica de cálculo de gas de \texttt{KECCAK256}.
+
+\subsection{Precompilado ML-DSA-65 (\texttt{0x0100})}
+
+Se despliega un precompilado en la dirección \texttt{0x0000...0100} que permite la verificación de firmas ML-DSA-65 desde contratos inteligentes:
+
+\begin{lstlisting}[style=rustcode, caption={Precompilado de verificación ML-DSA-65.}, label={lst:precompile}]
+pub const MLDSA_VERIFY_ADDRESS: Address =
+    address!("0000000000000000000000000000000000000100");
+pub const MLDSA_VERIFY_GAS: u64 = 3_450;
+pub const INPUT_LEN: usize = 5_293;  // 32 + 3309 + 1952
+
+pub fn ml_dsa_verify(input: &[u8], gas_limit: u64)
+    -> PrecompileResult
+\end{lstlisting}
+
+La entrada es una concatenación de 5.293 bytes: hash del mensaje (32 bytes) $\|$ firma ML-DSA-65 (3.309 bytes) $\|$ clave pública (1.952 bytes). La salida es \texttt{uint256(1)} si la firma es válida, \texttt{uint256(0)} si no lo es (codificada en 32 bytes compatibles con ABI).
+
+El coste de gas (3.450) se calibra a partir de \emph{benchmarks}: la verificación ML-DSA-65 tarda $\sim$42 $\mu$s en hardware moderno, a $\sim$61 gas/$\mu$s con un factor de seguridad de 1,35$\times$.
+
+\subsection{Precompilados deshabilitados}
+
+Los precompilados basados en curvas elípticas y emparejamientos bilineales se reemplazan por funciones que devuelven error (consumiendo todo el gas disponible):
+
+\begin{itemize}
+  \item \texttt{0x01} (\texttt{ecrecover}): ECDSA --- vulnerable a Shor.
+  \item \texttt{0x06}--\texttt{0x08} (BN254): Operaciones de curva para zk-SNARK --- vulnerables.
+  \item \texttt{0x0a} (KZG): Evaluación de puntos para EIP-4844 --- vulnerable.
+  \item \texttt{0x0b}--\texttt{0x13} (BLS12-381): Nueve operaciones de firma BLS --- vulnerables.
+\end{itemize}
+
+Los precompilados de funciones hash (\texttt{0x02} SHA-256, \texttt{0x03} RIPEMD-160, \texttt{0x09} Blake2f), la identidad (\texttt{0x04}) y la exponenciación modular (\texttt{0x05}) se mantienen activos, al ser resistentes a ataques cuánticos.
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Consenso Proof of Authority}
+\label{sec:dev_poa}
+%% ═══════════════════════════════════════════════════════════
+
+El \emph{crate} \texttt{reth-pq-poa} implementa un mecanismo de consenso Proof of Authority con sellado de bloques mediante ML-DSA-65 y rotación round-robin de validadores.
+
+\subsection{Conjunto de validadores}
+
+Cada validador se identifica por su dirección post-cuántica y su clave pública ML-DSA-65:
+
+\begin{lstlisting}[style=rustcode, caption={Estructura del conjunto de validadores.}, label={lst:validator_set}]
+pub struct Validator {
+    pub address: [u8; 20],     // SHAKE-256(pk)[12..32]
+    pub public_key: Vec<u8>,   // ML-DSA-65 (1.952 bytes)
+}
+
+pub struct ValidatorSet {
+    validators: Vec<Validator>,
+}
+\end{lstlisting}
+
+El conjunto de validadores se configura estáticamente mediante un archivo JSON referenciado por la variable de entorno \texttt{PQ\_POA\_CONFIG}, que especifica el tiempo de \emph{slot}, la dirección local y la lista ordenada de validadores.
+
+\subsection{Rotación round-robin}
+
+El validador propositor para cada bloque se determina de forma determinista:
+\begin{equation}
+  \text{proposer}(h) = \text{validators}[h \bmod |\text{validators}|],
+  \label{eq:round_robin}
+\end{equation}
+donde $h$ es el número de bloque. Esta fórmula garantiza una distribución equitativa de la producción de bloques entre todos los validadores.
+
+La Figura~\ref{fig:round_robin} ilustra la rotación round-robin para un clúster de 3 validadores.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  vnode/.style={draw, circle, minimum size=1cm, font=\small\bfseries, thick},
+  block/.style={draw, rounded corners, minimum width=0.9cm, minimum height=0.7cm, font=\footnotesize, fill=#1},
+  arr/.style={-{Stealth[length=4pt]}, thick},
+]
+
+% Validators
+\node[vnode, fill=red!20] (v1) at (0, 0) {V1};
+\node[vnode, fill=green!20] (v2) at (2.5, 0) {V2};
+\node[vnode, fill=blue!20] (v3) at (5, 0) {V3};
+
+% Circular arrows
+\draw[arr, bend left=30] (v1) to (v2);
+\draw[arr, bend left=30] (v2) to (v3);
+\draw[arr, bend left=30] (v3) to node[below=12pt, font=\footnotesize] {rotación $h \bmod 3$} (v1);
+
+% Block sequence
+\foreach \i/\v/\clr in {1/V1/red, 2/V2/green, 3/V3/blue, 4/V1/red, 5/V2/green, 6/V3/blue} {
+  \pgfmathsetmacro{\x}{(\i-1)*1.5}
+  \node[block=\clr!15] (b\i) at (\x, -2.2) {B\i};
+  \node[font=\tiny, below=1pt] at (\x, -2.65) {\v};
+}
+
+% Arrows between blocks
+\foreach \i [evaluate=\i as \j using int(\i+1)] in {1,...,5} {
+  \draw[arr, gray] (b\i) -- (b\j);
+}
+
+% Time arrow
+\draw[arr, gray!50] (-0.5, -3.2) -- (8, -3.2) node[right, font=\footnotesize] {tiempo};
+
+\end{tikzpicture}
+\caption{Rotación round-robin de 3 validadores: cada bloque $h$ es producido por el validador $h \bmod 3$, garantizando una distribución equitativa.}
+\label{fig:round_robin}
+\end{figure}
+
+\subsection{Sellado de bloques}
+
+El sellado de un bloque consiste en firmar el \emph{seal hash} de la cabecera con la clave privada ML-DSA-65 del validador:
+
+\begin{enumerate}
+  \item Calcular el \emph{seal hash}: $h_{\text{seal}} = \text{SHAKE-256}(\text{RLP}(\text{header con extra\_data vacío}))$, 32 bytes.
+  \item Firmar: $\text{seal} = \text{ML-DSA-65.Sign}(\mathit{sk}, h_{\text{seal}})$, 3.309 bytes.
+  \item Insertar el sello en el campo \texttt{extra\_data} de la cabecera.
+\end{enumerate}
+
+El \emph{seal hash} excluye el campo \texttt{extra\_data} (que se vacía antes del cálculo RLP) para evitar la circularidad: la firma no puede incluirse en el dato que se firma.
+
+\subsection{Verificación de bloques}
+
+La validación de consenso se implementa como un \emph{wrapper} sobre \texttt{EthBeaconConsensus}:
+
+\begin{lstlisting}[style=rustcode, caption={Consenso PoA: validación de bloques.}, label={lst:poa_consensus}]
+pub struct PqPoaConsensus<C> {
+    inner: C,    // EthBeaconConsensus
+    validator_set: Option<Arc<ValidatorSet>>,
+}
+\end{lstlisting}
+
+Para cada bloque (excepto el bloque génesis):
+\begin{enumerate}
+  \item Se delegan las verificaciones estándar de Ethereum al \texttt{inner}.
+  \item Se verifica que \texttt{extra\_data} tenga exactamente 3.309 bytes.
+  \item Se identifica el validador propositor esperado: $\text{proposer\_at}(h)$.
+  \item Se verifica el sello ML-DSA-65 contra la clave pública del propositor.
+\end{enumerate}
+
+\subsection{Flujo de minado}
+
+El \texttt{PoaMiningStream} implementa un \emph{stream} asíncrono que emite señales de producción de bloque:
+
+\begin{enumerate}
+  \item Un temporizador (\texttt{tokio::time::Interval}) genera \emph{ticks} cada \texttt{slot\_time\_ms} milisegundos.
+  \item En cada \emph{tick}, se lee el \texttt{chain\_tip} actual (un \texttt{AtomicU64} compartido con el \texttt{PoaBlockForwarder}).
+  \item Se calcula $\text{next\_block} = \text{tip} + 1$ y se comprueba si $\text{proposer\_at}(\text{next\_block}) = \text{local\_address}$.
+  \item Si es el turno del nodo local, se avanza optimísticamente el \emph{tip} y se emite una señal que dispara la construcción del bloque.
+\end{enumerate}
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Red y propagación de bloques}
+\label{sec:dev_network}
+%% ═══════════════════════════════════════════════════════════
+
+La propagación de bloques entre nodos se gestiona mediante tres componentes que extienden el protocolo P2P de reth:
+
+\textbf{PoaBlockAnnouncer}: Tras la producción local de un bloque, lo anuncia a todos los pares conectados mediante el mensaje \texttt{NewBlock} del protocolo \texttt{eth}. Los pares reciben el bloque completo (cabecera + cuerpo + sello) sin necesidad de solicitarlo individualmente.
+
+\textbf{PoaBlockImport}: Intercepta los bloques recibidos de la red P2P, los valida contra el consenso PoA (verificación del sello ML-DSA-65) y los envía a un canal interno para su procesamiento.
+
+\textbf{PoaBlockForwarder}: Consume el canal de bloques importados y los inyecta en la cadena canónica local a través de la \emph{engine API}. Actualiza el \texttt{chain\_tip} compartido con el \texttt{PoaMiningStream} para sincronizar la producción de bloques.
+
+La cadena completa de propagación es:
+\begin{equation*}
+  \text{LocalMiner} \xrightarrow{\text{engine API}} \text{cadena canónica} \xrightarrow{\text{announce}} \text{pares}
+  \xrightarrow{\text{import}} \text{canal} \xrightarrow{\text{forward}} \text{engine API (remoto)}
+\end{equation*}
+
+La Figura~\ref{fig:block_propagation} detalla el flujo de propagación entre un nodo productor y un nodo receptor.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  comp/.style={draw, rounded corners, minimum width=2.2cm, minimum height=0.7cm, font=\footnotesize, fill=#1, align=center},
+  arr/.style={-{Stealth[length=4pt]}, thick},
+  node distance=0.3cm and 0.3cm
+]
+
+% Producer node
+\node[comp=red!10] (miner) at (0, 0) {LocalMiner\\(turno?)};
+\node[comp=red!10, right=of miner] (engine1) {Engine API\\(newPayload)};
+\node[comp=red!10, right=of engine1] (canon1) {Cadena\\canónica};
+\node[comp=red!10, right=of canon1] (announcer) {PoaBlock-\\Announcer};
+
+% Network
+\node[comp=gray!15, right=0.6cm of announcer] (p2p) {P2P\\NewBlock};
+
+% Receiver node
+\node[comp=blue!10, below=1.2cm of p2p] (import) {PoaBlock-\\Import};
+\node[comp=blue!10, left=of import] (channel) {Canal\\(verify seal)};
+\node[comp=blue!10, left=of channel] (forwarder) {PoaBlock-\\Forwarder};
+\node[comp=blue!10, left=of forwarder] (engine2) {Engine API\\(newPayload)};
+\node[comp=blue!10, left=of engine2] (canon2) {Cadena\\canónica};
+
+% Arrows - producer
+\draw[arr] (miner) -- (engine1);
+\draw[arr] (engine1) -- (canon1);
+\draw[arr] (canon1) -- (announcer);
+\draw[arr] (announcer) -- (p2p);
+
+% Arrow - network to receiver
+\draw[arr] (p2p) -- (import);
+
+% Arrows - receiver
+\draw[arr] (import) -- (channel);
+\draw[arr] (channel) -- (forwarder);
+\draw[arr] (forwarder) -- (engine2);
+\draw[arr] (engine2) -- (canon2);
+
+% Labels
+\node[font=\footnotesize\bfseries, above=2pt of miner, anchor=south] {Nodo productor};
+\node[font=\footnotesize\bfseries, below=2pt of canon2, anchor=north] {Nodo receptor};
+
+% chain_tip sync
+\draw[arr, dashed, gray] (forwarder.south) -- ++(0, -0.5) -| ++(-5.5, 0) node[below, font=\tiny, pos=0.5] {actualiza chain\_tip (AtomicU64)} |- (canon2.south);
+
+\end{tikzpicture}
+\caption{Propagación de bloques PoA: el nodo productor anuncia el bloque vía P2P; el nodo receptor lo importa, verifica el sello ML-DSA-65 y lo inyecta en su cadena canónica mediante la engine API.}
+\label{fig:block_propagation}
+\end{figure}
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Pool de transacciones}
+\label{sec:dev_pool}
+%% ═══════════════════════════════════════════════════════════
+
+El \emph{crate} \texttt{reth-pq-pool} adapta la \emph{mempool} de reth para transacciones de tipo \texttt{0x50}. El componente principal es \texttt{PqPoolValidator}, que extiende la validación estándar de transacciones con verificaciones específicas de ML-DSA-65:
+
+\begin{enumerate}
+  \item \textbf{Validación de formato}: La firma debe tener exactamente 3.309 bytes y la clave pública 1.952 bytes.
+  \item \textbf{Verificación de firma}: $\text{ML-DSA-65.Verify}(\mathit{pk}, h_{\text{sign}}, \sigma) = \text{true}$.
+  \item \textbf{Derivación de remitente}: $\text{sender} = \text{SHAKE-256}(\mathit{pk}, 32)[12{:}32]$.
+  \item \textbf{Verificación de nonce}: El nonce de la transacción debe coincidir con el nonce actual de la cuenta.
+  \item \textbf{Verificación de saldo}: El remitente debe tener saldo suficiente para $\text{value} + \text{gas\_limit} \times \text{gas\_price}$.
+\end{enumerate}
+
+Las transacciones que pasan la validación se almacenan en la \emph{mempool} ordenadas por \texttt{gas\_price} (mayor primero) y son consumidas por el constructor de bloques (\emph{payload builder}) durante la producción del siguiente bloque.
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Wallet post-cuántico}
+\label{sec:dev_wallet}
+%% ═══════════════════════════════════════════════════════════
+
+El \emph{workspace} \texttt{pq-wallet} consta de cinco \emph{crates}: una biblioteca núcleo (\texttt{pq-wallet-core}), una interfaz CLI (\texttt{pq-wallet-cli}), una interfaz TUI (\texttt{pq-wallet-tui}), una herramienta de pruebas E2E (\texttt{pq-e2e-test}) y un sembrador de cadena (\texttt{pq-chain-seeder}).
+
+\subsection{Biblioteca núcleo (pq-wallet-core)}
+
+La biblioteca expone seis módulos:
+
+\begin{table}[htbp]
+\centering
+\caption{Módulos de pq-wallet-core.}
+\label{tab:wallet_core}
+\begin{tabular}{@{}lL{8cm}@{}}
+\toprule
+\textbf{Módulo} & \textbf{Funcionalidad} \\
+\midrule
+\texttt{keygen} & Generación de pares de claves ML-DSA-65; derivación de dirección PQ \\
+\texttt{keystore} & Almacenamiento cifrado en disco (AES-256-GCM + Argon2id KDF) \\
+\texttt{signer} & Firma de transacciones PQ con ML-DSA-65 \\
+\texttt{tx} & Formato de transacción tipo \texttt{0x50}, codificación/decodificación RLP \\
+\texttt{rpc} & Cliente JSON-RPC 2.0 asíncrono (reqwest) \\
+\texttt{error} & Tipo de error \texttt{WalletError} (thiserror) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Keystore cifrado}
+
+El almacenamiento de claves sigue un diseño de seguridad en capas:
+
+\begin{enumerate}
+  \item La semilla de 32 bytes se cifra con AES-256-GCM.
+  \item La clave de cifrado se deriva de una contraseña del usuario mediante Argon2id (memoria: 64 MB, iteraciones: 3, paralelismo: 4).
+  \item El \emph{keystore} se serializa como JSON con versión, parámetros KDF, nonce y texto cifrado.
+  \item Solo se almacena la semilla (32 bytes), no la clave expandida. La clave privada completa se regenera en memoria al desbloquear.
+\end{enumerate}
+
+\subsection{Interfaz CLI}
+
+El binario \texttt{pq-wallet} expone nueve subcomandos vía \texttt{clap}:
+
+\begin{table}[htbp]
+\centering
+\caption{Subcomandos de pq-wallet CLI.}
+\label{tab:cli_commands}
+\begin{tabular}{@{}llc@{}}
+\toprule
+\textbf{Comando} & \textbf{Descripción} & \textbf{Requiere firma} \\
+\midrule
+\texttt{new} & Genera par de claves, guarda keystore cifrado & No \\
+\texttt{address} & Muestra la dirección PQ & No \\
+\texttt{balance} & Consulta saldo vía JSON-RPC & No \\
+\texttt{send} & Construye, firma y envía transferencia PQ & Sí \\
+\texttt{deploy} & Despliega contrato (tx sin \texttt{to}) & Sí \\
+\texttt{receipt} & Consulta recibo de transacción por hash & No \\
+\texttt{sign} & Firma mensaje arbitrario & Sí \\
+\texttt{call} & Llamada de solo lectura (\texttt{eth\_call}) & No \\
+\texttt{export-seed} & Exporta semilla en hex (para \texttt{PQ\_VALIDATOR\_SK}) & Sí \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Interfaz TUI}
+
+La interfaz de terminal interactiva se implementa con \texttt{ratatui 0.29} y \texttt{crossterm 0.28}, organizándose en cuatro pestañas:
+
+\begin{enumerate}
+  \item \textbf{Wallet}: Muestra la dirección, el algoritmo utilizado, el saldo y una tabla comparativa PQ vs. clásico (tamaños de clave y firma, método de hash).
+  
+  \item \textbf{Transactions}: Tabla desplazable con las transacciones recientes (últimos 200 bloques), con panel de detalle que muestra el tipo (transferencia, despliegue, llamada a contrato), hash, remitente/destinatario, valor y tamaño de firma.
+  
+  \item \textbf{Blocks}: Tabla paginada de bloques (30 por página) con visor de sello que muestra la firma ML-DSA-65 del \texttt{extraData} (3.309 bytes = sello válido).
+  
+  \item \textbf{Network}: Estado de conexión, ID de cadena (20561), información de consenso (PoA, ML-DSA-65) y modelo de comisiones (EIP-1559).
+\end{enumerate}
+
+Las acciones interactivas (enviar transferencia, desplegar contrato, llamar contrato, buscar bloque, consultar dirección) se invocan mediante atajos de teclado y prompts \emph{overlay}. El estado se refresca automáticamente cada 3 segundos.
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Suite de pruebas E2E}
+\label{sec:dev_e2e}
+%% ═══════════════════════════════════════════════════════════
+
+La suite de pruebas de extremo a extremo se implementa en el \emph{crate} \texttt{pq-e2e-test} y se orquesta mediante el script \texttt{e2e/run-e2e.sh}. La suite ejecuta seis fases secuenciales:
+
+\begin{table}[htbp]
+\centering
+\caption{Fases de la suite de pruebas E2E.}
+\label{tab:e2e_phases}
+\begin{tabular}{@{}clcL{5.5cm}@{}}
+\toprule
+\textbf{Fase} & \textbf{Escenarios} & \textbf{Tests} & \textbf{Validaciones principales} \\
+\midrule
+1. Identidad de cadena & 3 & Sí & Chain ID = 20561, cuentas génesis, producción de bloques \\
+2. Consenso PoA & 2 & Sí & Rotación de validadores, monotonía temporal \\
+3. Comisiones EIP-1559 & 2 & Sí & Base fee presente, gas price $> 0$ \\
+4. Transacciones PQ & 3 & No* & Transferencia tipo 0x50, recibo válido, incremento de nonce \\
+5. Contratos inteligentes & 2 & No* & Despliegue exitoso, llamada correcta \\
+6. Multi-nodo & 3 & Sí & Chain ID consistente, altura $\leq$ 2 bloques, estado idéntico \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent *Las fases 4 y 5 requieren un \emph{keystore} y se omiten en modo \texttt{-{}-readonly}. La fase 6 solo se ejecuta cuando se proporcionan múltiples endpoints RPC.
+
+El script \texttt{run-e2e.sh} soporta tres modos de ejecución:
+\begin{itemize}
+  \item \textbf{local} (por defecto): Compila binarios, inicia \texttt{pq-reth} en modo \emph{dev}, genera keystore, ejecuta E2E, limpia.
+  \item \textbf{k8s}: Compila binarios, aplica manifiestos Kubernetes, espera a los validadores, ejecuta E2E.
+  \item \textbf{external}: Ejecuta E2E contra un nodo externo ya en funcionamiento.
+\end{itemize}
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Infraestructura de despliegue}
+\label{sec:dev_infra}
+%% ═══════════════════════════════════════════════════════════
+
+\subsection{Docker Compose}
+
+El archivo \texttt{docker-compose.yml} despliega un clúster de tres validadores PoA más el servidor de simulación cuántica:
+
+\begin{table}[htbp]
+\centering
+\caption{Servicios del despliegue Docker Compose.}
+\label{tab:docker_services}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Servicio} & \textbf{Puertos} & \textbf{IP} & \textbf{Rol} \\
+\midrule
+\texttt{pq-validator-1} & 8545 (RPC), 30303 (P2P) & 10.5.0.10 & Validador 1 \\
+\texttt{pq-validator-2} & 8546 (RPC), 30304 (P2P) & 10.5.0.11 & Validador 2 \\
+\texttt{pq-validator-3} & 8547 (RPC), 30305 (P2P) & 10.5.0.12 & Validador 3 \\
+\texttt{qiskit-api} & 8888 & 10.5.0.20 & Simulación cuántica \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Cada validador monta su configuración PoA individual (\texttt{poa-config-N.json}), su semilla de clave privada (\texttt{seed-N.hex}) y el \texttt{genesis.json} compartido. Los tres validadores se conectan mediante descubrimiento deshabilitado (\texttt{-{}-disable-discovery}) y pares confiables explícitos (\texttt{-{}-trusted-peers}), en una red \emph{bridge} con subred \texttt{10.5.0.0/24}.
+
+\subsection{Kubernetes}
+
+Los manifiestos en \texttt{e2e/k8s/} despliegan el mismo clúster de tres validadores en un entorno Kubernetes:
+
+\begin{itemize}
+  \item \texttt{00-namespace.yaml}: Namespace \texttt{pqevm}.
+  \item \texttt{01-genesis-configmap.yaml}: ConfigMap con el génesis JSON.
+  \item \texttt{02-poa-configs.yaml}: ConfigMap con las configuraciones PoA por validador.
+  \item \texttt{03-services.yaml}: Servicios headless (descubrimiento P2P) y LoadBalancer (RPC).
+  \item \texttt{04-validators-statefulset.yaml}: StatefulSet con 3 réplicas, contenedor init para selección de configuración por ordinal, PVCs de 5 GiB por nodo.
+\end{itemize}
+
+El contenedor init extrae el ordinal del pod (\texttt{hostname | awk -F- '\{print \$NF\}'}) para seleccionar la configuración PoA correspondiente. Los pares se descubren mediante DNS del servicio headless (\texttt{pq-validator-\{i\}.pq-validators-headless.pqevm.svc.cluster.local}).
+
+\subsection{Génesis}
+
+El bloque génesis (\texttt{pq-reth/bin/pq-reth/genesis.json}) define:
+
+\begin{itemize}
+  \item \textbf{Chain ID}: 20561.
+  \item \textbf{Nombre}: PostQuantumEVM.
+  \item \textbf{Moneda nativa}: qETH (18 decimales).
+  \item \textbf{Extra Data}: \texttt{0x505155414e54554d2d45564d} (ASCII: \texttt{PQUANTUM-EVM}).
+  \item \textbf{Gas Limit}: 30.000.000.
+  \item \textbf{Hard forks}: Todos activos desde el bloque 0 (Homestead hasta Prague).
+  \item \textbf{Terminal Total Difficulty}: 0 (Proof of Stake desde el génesis, habilitando la \emph{engine API}).
+  \item \textbf{Cuentas prefinanciadas}: 15 cuentas (11 clásicas + 4 post-cuánticas) con 10.000 qETH cada una.
+\end{itemize}
+
+\subsection{Nodo binario (pq-reth)}
+
+El binario \texttt{pq-reth} soporta dos modos de operación:
+
+\begin{itemize}
+  \item \textbf{Modo dev} (sin \texttt{PQ\_POA\_CONFIG}): Minado por intervalos estándar con \texttt{-{}-dev}. Adecuado para desarrollo y pruebas locales.
+  \item \textbf{Modo PoA} (con \texttt{PQ\_POA\_CONFIG} y \texttt{PQ\_VALIDATOR\_SK}): Producción de bloques PoA con rotación round-robin. Lanza tres tareas asíncronas: \texttt{Local\-Miner} (dispara construcción de bloques), \texttt{Poa\-Block\-Forwarder} (importa bloques de pares) y \texttt{Poa\-Block\-Announcer} (propaga bloques locales).
+\end{itemize}
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Propuesta de EIP}
+\label{sec:dev_eip}
+%% ═══════════════════════════════════════════════════════════
+
+La propuesta de EIP (\texttt{eips/eip-pq-tx.md}) formaliza la especificación del tipo de transacción \texttt{0x50} siguiendo el formato estándar de los Ethereum Improvement Proposals. El documento incluye:
+
+\begin{itemize}
+  \item \textbf{Abstract}: Resumen del tipo de transacción, opcode y precompilado.
+  \item \textbf{Motivation}: Justificación de la amenaza cuántica y la necesidad de un tipo nativo.
+  \item \textbf{Specification}: Formato completo del tipo de transacción, hash de firma, hash de transacción, derivación de direcciones, formato de recibo, especificación del opcode PQHASH, precompilado ML-DSA-65, y lista de precompilados deshabilitados.
+  \item \textbf{Rationale}: Justificación de las decisiones de diseño (tipo nativo vs. ERC-4337, ML-DSA-65 vs. alternativas, SHAKE-256, tipo \texttt{0x50}, gas price simplificado, clave pública en cada transacción).
+  \item \textbf{Backwards Compatibility}: Análisis de compatibilidad con transacciones existentes, espacio de direcciones, invariantes rotos.
+  \item \textbf{Test Cases}: Cinco categorías de pruebas (codificación, verificación, derivación, multi-nodo, contratos).
+  \item \textbf{Security Considerations}: Timeline cuántico, nivel de seguridad, maleabilidad, exposición de clave pública, tamaño de transacción y DoS, colisión de direcciones, resistencia a canales laterales, riesgos del período de transición.
+\end{itemize}
+
+La propuesta está clasificada como \emph{Standards Track / Core} y requiere EIP-2718 como dependencia. Su estado actual es \emph{Draft}, pendiente de presentación formal a la comunidad Ethereum (OE8).

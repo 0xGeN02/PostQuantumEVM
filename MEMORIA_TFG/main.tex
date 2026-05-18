@@ -1,0 +1,69 @@
+\documentclass[11pt,a4paper,oneside]{report}
+
+\input{configuracion/paquetes}
+\input{configuracion/datos}
+\input{configuracion/estilos}
+\input{configuracion/comandos}
+
+\begin{document}
+
+% --------------------
+% Portada y preliminares
+% --------------------
+\pagenumbering{Roman}
+\setcounter{page}{1}
+
+\portadauie
+\paginaenblancofrontmatter
+
+\seccionfrontmatter{RESUMEN}{\input{preliminares/resumen}}
+\seccionfrontmatter{ABSTRACT}{\input{preliminares/abstract}}
+\ifbool{incluirdedicatoria}{%
+  \seccionfrontmatter{DEDICATORIA}{\input{preliminares/dedicatoria}}
+}{}
+
+\clearpage
+\pagestyle{frontmatter}
+\tableofcontents
+\thispagestyle{frontmatter}
+\paginaenblancofrontmatter
+
+\clearpage
+\pagestyle{frontmatter}
+\listoffigures
+\thispagestyle{frontmatter}
+\addcontentsline{toc}{chapter}{ÍNDICE DE FIGURAS}
+\paginaenblancofrontmatter
+
+\clearpage
+\pagestyle{frontmatter}
+\listoftables
+\thispagestyle{frontmatter}
+\addcontentsline{toc}{chapter}{ÍNDICE DE TABLAS}
+\paginaenblancofrontmatter
+
+% --------------------
+% Cuerpo del documento
+% --------------------
+\clearpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+\pagestyle{cuerpo}
+
+\input{capitulos/01_introduccion}
+\input{capitulos/02_marco_teorico}
+\input{capitulos/03_analisis_situacion}
+\input{capitulos/04_desarrollo}
+\input{capitulos/05_resultados}
+\input{capitulos/06_conclusiones}
+
+\capitulobibliografia
+
+\chapter{ANEXOS}
+\input{anexos/anexo_01_iag}
+\clearpage
+\input{anexos/anexo_02}
+\clearpage
+\input{anexos/anexo_03}
+
+\end{document}

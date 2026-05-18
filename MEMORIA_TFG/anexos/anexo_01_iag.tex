@@ -1,0 +1,34 @@
+\section{Anexo 1: Declaración de uso de IAG}
+\label{sec:anexo_iag}
+
+En cumplimiento de la normativa de la Universidad Intercontinental de la Empresa, se declara el uso de las siguientes herramientas de Inteligencia Artificial Generativa (IAG) durante la elaboración de este Trabajo Fin de Grado:
+
+\subsection*{Herramientas utilizadas}
+
+\begin{enumerate}
+  \item \textbf{Claude (Anthropic) --- claude-opus-4-20250514}
+  \begin{itemize}
+    \item \textbf{Uso}: Asistencia en la generación de código Rust (tipos de transacción, consenso PoA, EVM, pool, red), redacción de la propuesta de EIP, revisión y estructuración de la memoria del TFG, y resolución de errores de compilación.
+    \item \textbf{Alcance}: Se utilizó como asistente de programación interactivo para acelerar la implementación de los componentes del sistema y la redacción de documentación técnica. Todo el código generado fue revisado, modificado cuando fue necesario y validado mediante las suites de tests unitarios y de extremo a extremo.
+    \item \textbf{Limitaciones}: La herramienta no tiene acceso a información posterior a su fecha de corte de entrenamiento. Las decisiones de diseño arquitectónico, la selección de algoritmos criptográficos y la definición de los objetivos del proyecto fueron responsabilidad exclusiva del autor.
+  \end{itemize}
+\end{enumerate}
+
+\subsection*{Aspectos no generados por IAG}
+
+Los siguientes elementos fueron desarrollados íntegramente por el autor sin asistencia de IAG:
+
+\begin{itemize}
+  \item Definición del problema, objetivos y alcance del TFG.
+  \item Selección de ML-DSA-65 frente a Falcon y SLH-DSA.
+  \item Decisión de PoA frente a PoS para el consenso post-cuántico.
+  \item Diseño de la arquitectura del sistema (capas, componentes, interfaces).
+  \item Ejecución e interpretación de las simulaciones cuánticas con Qiskit.
+  \item Ejecución, depuración y análisis de los tests E2E.
+  \item Medición y análisis de los benchmarks de rendimiento.
+  \item Revisión crítica y corrección de todo el contenido generado.
+\end{itemize}
+
+\subsection*{Declaración de responsabilidad}
+
+El autor asume la plena responsabilidad sobre la corrección, originalidad y rigor académico de todo el contenido presentado en este trabajo, independientemente de las herramientas utilizadas durante su elaboración.

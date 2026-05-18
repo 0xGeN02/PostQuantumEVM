@@ -5,6 +5,10 @@
 #   - Genesis ConfigMap mounted at /app/genesis.json
 #   - Per-validator PoA config (selected via ordinal index)
 #
+# Multi-node mode: Validators run WITHOUT --dev so that P2P
+# networking and block propagation are enabled. Peers discover
+# each other via the headless service DNS.
+#
 # Image: pqevm-node:latest (built from Dockerfile.pq-reth)
 apiVersion: apps/v1
 kind: StatefulSet
@@ -27,7 +31,7 @@ spec:
         app.kubernetes.io/name: postquantumevm
         app.kubernetes.io/component: validator
     spec:
-      # Init container to select the correct PoA config based on pod ordinal
+      # Init container to select the correct PoA config and seed based on pod ordinal
       initContainers:
         - name: select-poa-config
           image: busybox:1.36
@@ -40,11 +44,28 @@ spec:
               IDX=$((ORDINAL + 1))
               echo "Validator index: $IDX (hostname: $HOSTNAME)"
               cp /configs/poa-config-${IDX}.json /poa/poa-config.json
+              cp /seeds/seed-${IDX}.hex /poa/seed.hex
+              # Build trusted-peers list (all other validators via headless service)
+              PEERS=""
+              for i in 0 1 2; do
+                if [ "$i" != "$ORDINAL" ]; then
+                  HOST="pq-validator-${i}.pq-validators-headless.pqevm.svc.cluster.local"
+                  if [ -n "$PEERS" ]; then
+                    PEERS="${PEERS},enode://placeholder@${HOST}:30303"
+                  else
+                    PEERS="enode://placeholder@${HOST}:30303"
+                  fi
+                fi
+              done
+              echo "$PEERS" > /poa/trusted-peers.txt
               echo "PoA config selected:"
               cat /poa/poa-config.json
+              echo "Trusted peers: $PEERS"
           volumeMounts:
             - name: poa-configs
               mountPath: /configs
+            - name: validator-seeds
+              mountPath: /seeds
             - name: poa-selected
               mountPath: /poa
 
@@ -56,19 +77,21 @@ spec:
             - name: PQ_POA_CONFIG
               value: /poa/poa-config.json
           command:
-            - pq-reth
-          args:
-            - "node"
-            - "--chain=/app/genesis.json"
-            - "--datadir=/data"
-            - "--dev"
-            - "--http"
-            - "--http.addr=0.0.0.0"
-            - "--http.port=8545"
-            - "--http.api=eth,net,web3,admin"
-            - "--http.corsdomain=*"
-            - "--port=30303"
-            - "--log.stdout.filter=info"
+            - sh
+            - -c
+            - |
+              export PQ_VALIDATOR_SK=$(cat /poa/seed.hex)
+              TRUSTED_PEERS=$(cat /poa/trusted-peers.txt)
+              exec pq-reth node \
+                --chain=/app/genesis.json \
+                --datadir=/data \
+                --http --http.addr=0.0.0.0 --http.port=8545 \
+                --http.api=eth,net,web3,admin \
+                --http.corsdomain=* \
+                --port=30303 \
+                --disable-discovery \
+                --trusted-peers="$TRUSTED_PEERS" \
+                --log.stdout.filter=info
           ports:
             - name: http-rpc
               containerPort: 8545
@@ -116,6 +139,9 @@ spec:
         - name: poa-configs
           configMap:
             name: pqevm-poa-configs
+        - name: validator-seeds
+          secret:
+            secretName: pqevm-validator-seeds
         - name: poa-selected
           emptyDir: {}
 

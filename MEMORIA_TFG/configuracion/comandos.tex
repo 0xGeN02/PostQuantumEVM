@@ -1,0 +1,93 @@
+% =========================================================
+% Comandos auxiliares
+% =========================================================
+\newcommand{\paginaenblancofrontmatter}{%
+  \ifodd\value{page}
+    \newpage
+    \null
+    \thispagestyle{frontblank}
+    \newpage
+  \else
+    \clearpage
+  \fi
+}
+
+\newcommand{\seccionfrontmatter}[2]{%
+  \clearpage
+  \pagestyle{frontmatter}
+  \chapter*{#1}
+  \thispagestyle{frontmatter}
+  \addcontentsline{toc}{chapter}{#1}
+  #2
+  \paginaenblancofrontmatter
+}
+
+\newcommand{\portadauie}{%
+  \clearpage
+  \newgeometry{
+    top=18mm,
+    bottom=16mm,
+    left=19.05mm,
+    right=19.05mm,
+    footskip=10mm
+  }
+  \thispagestyle{portada}
+
+  \vspace*{0.35cm}
+
+  \begin{center}
+    {\bfseries\fontsize{17}{19}\selectfont \universidad\par}
+
+    \vspace{0.55cm}
+    \IfFileExists{imagenes/sello_uie.png}{%
+      \includegraphics[width=9.04cm]{imagenes/sello_uie.png}\par
+    }{%
+      \fbox{\parbox[c][7.30cm][c]{9.04cm}{\centering Sello UIE}}\par
+    }
+
+    \vspace{0.75cm}
+    {\bfseries\fontsize{17}{19}\selectfont \facultad\par}
+
+    \vspace{0.45cm}
+    {\bfseries\fontsize{17}{19}\selectfont \titulacion\par}
+
+    \vspace{0.45cm}
+    {\bfseries\fontsize{18}{20}\selectfont \tituloTrabajo\par}
+  \end{center}
+
+  \vspace{0.55cm}
+  \begin{flushright}
+    \begin{tabular}{r}
+      {\fontsize{15}{17}\selectfont \textbf{Autor:}} \\
+      {\fontsize{15}{17}\selectfont \autorTrabajo} \\
+      \\[0.25cm]
+      {\fontsize{15}{17}\selectfont \textbf{Director(es):}} \\
+      {\fontsize{15}{17}\selectfont \directorUno}%
+      \ifstrempty{\directorDos}{}{\\{\fontsize{15}{17}\selectfont \directorDos}}
+    \end{tabular}
+  \end{flushright}
+
+  \vspace*{\fill}
+
+  \ifbool{publicacionabierta}{%
+    \begin{minipage}[t]{0.70\textwidth}
+      \IfFileExists{imagenes/cc_by_nc_nd.png}{%
+        \includegraphics[width=4.23cm]{imagenes/cc_by_nc_nd.png}\\[0.10cm]
+      }{%
+        \fbox{\parbox[c][1.25cm][c]{4.23cm}{\centering Licencia CC}}\\[0.10cm]
+      }
+      {\footnotesize Esta obra se encuentra sujeta a la licencia \textit{Creative Commons} (\textbf{CC-BY-NC-ND})}\\[-0.03cm]
+      {\footnotesize\textbf{Compartir-Reconocimiento-No Comercial-Sin Obra Derivada}}
+    \end{minipage}
+  }{}
+
+  \restoregeometry
+}
+
+\newcommand{\capitulobibliografia}{%
+  \clearpage
+  \chapter{BIBLIOGRAFÍA}
+  Las citas deben ser realizadas bajo la Norma APA.
+
+  \printbibliography[heading=none]
+}
