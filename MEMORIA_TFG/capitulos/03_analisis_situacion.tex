@@ -61,6 +61,73 @@ Se identifican tres escenarios de fallo por gravedad creciente:
 
 El presente trabajo aborda los Escenarios 1 y 2 mediante la migración de la capa de ejecución a ML-DSA-65, la deshabilitación de precompilados vulnerables, y la introducción de primitivas PQ nativas. El Escenario 3 (capa de consenso) queda fuera del alcance, ya que requiere un esquema de agregación de firmas post-cuánticas que no existe de forma estandarizada (ver Sección~\ref{sec:pos_pq}).
 
+\subsection{Plan de migración para usuarios}
+\label{sec:migration_plan}
+
+El protocolo, por muy completo que sea, no es operativo sin un \emph{plan de migración} viable para los miles de millones de cuentas Ethereum existentes. Esta sección formaliza el procedimiento que un usuario o aplicación seguiría para abandonar una cuenta clásica (vulnerable a Shor) y operar exclusivamente desde una cuenta post-cuántica. El procedimiento se diseña asumiendo dos invariantes:
+\begin{enumerate}
+  \item \textbf{Coexistencia durante la transición}: ambos formatos de transacción (\texttt{0x02} clásica y \texttt{0x50} PQ) se aceptan simultáneamente durante la ventana de migración, evitando un \emph{flag day} disruptivo.
+  \item \textbf{Migración voluntaria pero incentivada}: tras un periodo de gracia (estimado entre 2 y 5 años post-fork), las transacciones \texttt{0x02} se rechazarían, presionando a los rezagados a migrar antes de que un CRQC esté operativo.
+\end{enumerate}
+
+El flujo, ilustrado en la Figura~\ref{fig:user_migration}, consta de cinco etapas:
+
+\begin{enumerate}
+  \item \textbf{Generación del par PQ}: el usuario invoca \texttt{pq-wallet new} (CLI) o el equivalente en la TUI; el sistema genera $(\textsf{sk}_\text{PQ}, \textsf{pk}_\text{PQ})$ mediante ML-DSA-65 y deriva la dirección PQ como $\text{SHAKE-256}(\textsf{pk}_\text{PQ})[12{:}32]$. La clave privada se almacena cifrada con AES-256-GCM en un keystore JSON local.
+  
+  \item \textbf{Anuncio de la nueva cuenta}: opcionalmente, el usuario publica su nueva dirección PQ asociándola a un identificador legible (por ejemplo, mediante ENS o una transacción etiquetada). Esto facilita que terceros (intercambios, contactos, contratos) reconozcan el destino correcto.
+  
+  \item \textbf{Transferencia puente}: una transacción \texttt{0x02} clásica firmada con la antigua clave ECDSA transfiere todos los fondos relevantes (ETH nativo y tokens ERC-20) desde la cuenta clásica $A$ a la nueva cuenta PQ $A'$. Es la \emph{última} firma ECDSA que el usuario produce; cualquier filtración futura de su clave clásica solo expondrá un saldo residual nulo.
+  
+  \item \textbf{Activación operativa}: desde ese momento, todas las transacciones nuevas (transferencias, interacciones con contratos, despliegues) se firman exclusivamente con $\textsf{sk}_\text{PQ}$ y se envían en formato \texttt{0x50}. La cuenta clásica $A$ se considera \emph{quemada}.
+  
+  \item \textbf{Cierre del periodo de gracia}: pasado el plazo definido en el hard fork, los nodos rechazan transacciones \texttt{0x02} en el \emph{mempool} y, simultáneamente, los exploradores marcan visualmente las cuentas clásicas no migradas como <<en riesgo cuántico>>. Los fondos remanentes en cuentas clásicas no migradas dejan de ser movibles vía el protocolo estándar, salvo a través de un mecanismo de rescate específico (por ejemplo, una EIP de \emph{recovery} que aquí queda como trabajo futuro).
+\end{enumerate}
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  >=Stealth,
+  font=\footnotesize,
+  step/.style={draw, rounded corners, minimum width=2.6cm, minimum height=1.1cm, align=center, fill=#1},
+  arr/.style={-{Stealth[length=4pt]}, thick},
+]
+
+\node[step=blue!12] (s1) at (0, 0) {1.~Generar par\\ML-DSA-65};
+\node[step=blue!12, right=0.5cm of s1] (s2) {2.~Anunciar\\dirección $A'$};
+\node[step=orange!20, right=0.5cm of s2] (s3) {3.~TX puente\\$A \to A'$ (ECDSA)};
+\node[step=green!15, right=0.5cm of s3] (s4) {4.~Operar con\\TX 0x50 (PQ)};
+
+% Step 5 below
+\node[step=red!12, below=0.8cm of s3] (s5) {5.~Fin del periodo\\de gracia};
+
+% Arrows
+\draw[arr] (s1) -- (s2);
+\draw[arr] (s2) -- (s3);
+\draw[arr] (s3) -- (s4);
+\draw[arr] (s4.south) -- ++(0, -0.4) -| (s5.north east);
+
+% Annotation under transfer
+\node[font=\scriptsize, gray!70!black, align=center, below=2pt of s3]
+  {última firma\\ECDSA};
+
+% Labels at left
+\node[font=\footnotesize\bfseries, anchor=east] at (-0.7, 0) {Usuario};
+\node[font=\footnotesize\bfseries, anchor=east] at (-0.7, -2.5) {Red};
+
+% Time arrow
+\draw[->, gray!50, very thick] (-0.5, -3.6) -- (12, -3.6)
+  node[right, gray!60, font=\footnotesize] {tiempo};
+\node[gray!60, font=\scriptsize] at (0, -3.85) {$t_0$};
+\node[gray!60, font=\scriptsize] at (8, -3.85) {$t_0 + \Delta_\text{gracia}$};
+
+\end{tikzpicture}
+\caption{Flujo de migración de un usuario desde una cuenta clásica $A$ a una cuenta post-cuántica $A'$. La transacción puente (paso 3) es la última firma ECDSA que el usuario produce; los pasos 1, 2 y 4 son completamente PQ. El paso 5 lo dispara el protocolo, no el usuario.}
+\label{fig:user_migration}
+\end{figure}
+
+Este procedimiento es \textbf{lineal en la base de usuarios}: cada cuenta migra una sola vez, sin coordinación entre cuentas. Para contratos inteligentes, el patrón equivalente es la \emph{cesión de propiedad} a través de funciones \texttt{transferOwnership(\ldots)} ya estándar en OpenZeppelin: el propietario clásico ejecuta una última transacción \texttt{0x02} para asignar la propiedad a su nueva cuenta PQ. Las DEX, oráculos y multisigs requieren una migración análoga, generalmente coordinada por sus DAO mediante propuestas de gobernanza.
+
 
 %% ═══════════════════════════════════════════════════════════
 \section{Requisitos}

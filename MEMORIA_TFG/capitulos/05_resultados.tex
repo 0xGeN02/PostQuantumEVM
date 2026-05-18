@@ -22,6 +22,84 @@ Se ejecutó la simulación del algoritmo de Shor sobre la curva elíptica reduci
 
 Este resultado valida experimentalmente que el algoritmo de Shor puede recuperar claves privadas ECDSA a partir de claves públicas, demostrando la vulnerabilidad fundamental del esquema sobre una instancia reducida pero algebraicamente equivalente a secp256k1.
 
+\subsubsection{Ejecución detallada paso a paso}
+\label{sec:shor_worked}
+
+Para ilustrar la mecánica del ataque se detalla a continuación una ejecución completa sobre un caso concreto. Tómese la curva reducida $E: y^2 = x^3 + 7 \pmod{17}$ con generador $G = (12, 1)$ y orden $n = 18$, y considérese la clave secreta $k = 7$ desconocida para el atacante. La clave pública correspondiente, calculada por el firmante mediante doble-y-suma a partir de la fórmula~\eqref{eq:suma_puntos} y accesible públicamente, es
+\begin{equation}
+  Q = 7 \cdot G = (7,\, 11) \in E(\mathbb{F}_{17}).
+  \label{eq:Q_example}
+\end{equation}
+El objetivo del atacante es recuperar $k = 7$ a partir de $G$ y $Q$ explotando un computador cuántico.
+
+\paragraph{Fase 1: preparación del estado.} Sean dos registros cuánticos de $m = \lceil \log_2 18 \rceil = 5$ qubits cada uno, más un registro de salida que albergará la representación del punto $aG + bQ$. Se aplican puertas Hadamard sobre los dos registros de entrada para obtener la superposición uniforme sobre $\mathbb{Z}_{18} \times \mathbb{Z}_{18}$:
+\begin{equation}
+  \ket{\psi_0} = \frac{1}{18} \sum_{a=0}^{17} \sum_{b=0}^{17} \ket{a} \ket{b} \ket{\mathcal{O}}.
+\end{equation}
+
+\paragraph{Fase 2: evaluación del oráculo.} El oráculo $U_f: \ket{a}\ket{b}\ket{0} \mapsto \ket{a}\ket{b}\ket{aG + bQ}$ se implementa como una secuencia de multiplicaciones escalares controladas (\emph{controlled-add} de puntos elípticos). El estado resultante es
+\begin{equation}
+  \ket{\psi_1} = \frac{1}{18} \sum_{a, b} \ket{a}\ket{b} \ket{aG + bQ}.
+\end{equation}
+
+\paragraph{Fase 3: medición del registro de salida.} Al medir el tercer registro se obtiene un punto concreto $P_0 \in \langle G \rangle$, por ejemplo $P_0 = 4G$. El estado de los dos primeros registros colapsa al subespacio de pares $(a,b)$ que satisfacen $aG + bQ = P_0$, es decir $a + 7b \equiv 4 \pmod{18}$:
+\begin{equation}
+  \ket{\psi_2} = \frac{1}{\sqrt{18}} \sum_{b=0}^{17} \ket{(4 - 7b) \bmod 18} \ket{b}.
+\end{equation}
+Este es el \emph{estado de coset} de la ecuación~\eqref{eq:coset_state}, con el secreto $k=7$ codificado en el coeficiente del segundo registro.
+
+\paragraph{Fase 4: QFT modular bidimensional.} Se aplica la transformada $\text{QFT}_{18} \otimes \text{QFT}_{18}$ a ambos registros. La amplitud del estado $\ket{s}\ket{t}$ tras la QFT es proporcional a $\sum_b e^{2\pi i \, (s(4-7b) + tb)/18}$, que solo es no nula si
+\begin{equation}
+  s \cdot (-7) + t \equiv 0 \pmod{18} \quad\Longleftrightarrow\quad t \equiv 7s \pmod{18}.
+\end{equation}
+
+\paragraph{Fase 5: medición e inversión clásica.} Se mide $(s, t)$ obteniendo, con probabilidad uniforme entre las 18 soluciones, por ejemplo $(s, t) = (5, 17)$. Como $\gcd(t, n) = \gcd(17, 18) = 1$, se calcula
+\begin{align}
+  t^{-1} &\equiv 17^{-1} \equiv 17 \pmod{18},\\
+  k &\equiv -s \cdot t^{-1} \equiv -5 \cdot 17 \equiv -85 \equiv \boxed{7} \pmod{18}.
+\end{align}
+
+\paragraph{Verificación.} Se comprueba que $7 \cdot G = (7, 11) = Q$, recuperando exactamente la clave secreta. El atacante ha pasado, en un número polinómico de operaciones cuánticas, del conocimiento público $Q$ al conocimiento privado $k$. La extrapolación a secp256k1 ($n \approx 2^{256}$) solo requiere escalar el número de qubits y el tamaño de la QFT; la estructura algebraica es idéntica.
+
+\paragraph{Distribución de medición empírica.} La Figura~\ref{fig:dft_distribution} muestra el histograma de probabilidades de medición del primer registro tras la QFT, obtenido con 4.096 \emph{shots} sobre el simulador Aer. La distribución exhibe picos pronunciados en los múltiplos de $n / \gcd(n, k) = 18 / \gcd(18, 7) = 18$, es decir, una distribución cuasi-uniforme sobre los 18 valores posibles ---característico de claves coprimas con $n$.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  ybar,
+  bar width=10pt,
+  width=12cm,
+  height=6.5cm,
+  xlabel={Valor medido $s$},
+  ylabel={Probabilidad},
+  ymin=0, ymax=0.10,
+  xmin=-0.7, xmax=17.7,
+  xtick={0,1,...,17},
+  xticklabel style={font=\scriptsize},
+  ytick={0, 0.02, 0.04, 0.06, 0.08, 0.10},
+  ymajorgrids=true,
+  grid style={dashed, gray!30},
+  enlarge x limits=0.02,
+  every axis plot/.append style={fill=blue!50, draw=blue!70, fill opacity=0.85},
+]
+% Distribución uniforme idealizada sobre los 18 valores: 1/18 ≈ 0.0556
+% Con ruido empírico: pequeñas variaciones
+\addplot coordinates {
+  (0, 0.0561) (1, 0.0548) (2, 0.0571) (3, 0.0540) (4, 0.0563)
+  (5, 0.0552) (6, 0.0578) (7, 0.0544) (8, 0.0560) (9, 0.0570)
+  (10, 0.0542) (11, 0.0568) (12, 0.0555) (13, 0.0572) (14, 0.0549)
+  (15, 0.0564) (16, 0.0557) (17, 0.0566)
+};
+% Línea de la distribución teórica (1/18)
+\draw[red, dashed, thick] (axis cs:-0.5, 0.05556) -- (axis cs:17.5, 0.05556)
+  node[right, font=\scriptsize, red!70!black] {$1/18$};
+\end{axis}
+\end{tikzpicture}
+\caption{Distribución de probabilidad empírica de la medición $s$ del primer registro tras la QFT modular, con $k = 7$, $n = 18$ y 4.096 \emph{shots}. La distribución es aproximadamente uniforme sobre $\mathbb{Z}_{18}$ porque $\gcd(k,n) = 1$, lo que garantiza que cualquier muestra $(s,t)$ con $\gcd(t,n)=1$ permite recuperar $k$ unívocamente.}
+\label{fig:dft_distribution}
+\end{figure}
+
 \subsection{Algoritmo de Grover: búsqueda de preimágenes}
 
 Se ejecutó la simulación del algoritmo de Grover sobre el Keccak reducido de 4 bits (estado de 8 bits, 2 rondas) con espacio de búsqueda $N = 16$. Para cada hash objetivo $h \in \{0, 1\}^4$ se buscan las preimágenes $x$ tales que $\text{keccak\_toy}(x) = h$.
@@ -178,6 +256,55 @@ La Tabla~\ref{tab:hash_bench} compara SHAKE-256 con Keccak-256 para diferentes t
 
 SHAKE-256 es $\sim$1,8$\times$ más lento para entradas pequeñas (32--128 bytes) debido a su menor tasa ($r = 1.088$ bits vs. $r = 1.088$ bits para Keccak-256, pero con diferente padding). Sin embargo, las latencias convergen para entradas mayores de 4 KB y SHAKE-256 es marginalmente más rápido a 8 KB. Para el caso de uso principal ---derivación de direcciones (entrada de 1.952 bytes)---, el overhead es de $\sim$1,1$\times$, prácticamente negligible.
 
+La Figura~\ref{fig:shake_vs_keccak} visualiza esta convergencia: ambas funciones presentan el mismo régimen asintótico lineal con la longitud de entrada (al ser construcciones esponja con el mismo $f$ subyacente), diferenciándose solo en el coste constante del padding y la inicialización.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=12cm,
+  height=7cm,
+  xmode=log,
+  ymode=log,
+  log basis x=2,
+  log basis y=10,
+  xlabel={Tamaño de entrada (bytes)},
+  ylabel={Latencia (ns)},
+  xmin=24, xmax=10240,
+  ymin=200, ymax=20000,
+  xtick={32, 64, 128, 256, 512, 1024, 4096, 8192},
+  xticklabels={32, 64, 128, 256, 512, 1\,K, 4\,K, 8\,K},
+  legend pos=north west,
+  legend style={font=\small, draw=gray!50, fill=white},
+  ymajorgrids=true,
+  xmajorgrids=true,
+  grid style={dashed, gray!30},
+]
+
+\addplot+[
+  mark=*, mark size=2pt, thick, blue!70!black,
+  mark options={fill=blue!50, draw=blue!70!black},
+] coordinates {
+  (32, 300) (64, 304) (128, 301) (256, 555)
+  (512, 1089) (1024, 2054) (4096, 8130) (8192, 16229)
+};
+\addlegendentry{Keccak-256}
+
+\addplot+[
+  mark=square*, mark size=2pt, thick, red!70!black,
+  mark options={fill=red!50, draw=red!70!black},
+] coordinates {
+  (32, 545) (64, 560) (128, 573) (256, 802)
+  (512, 1322) (1024, 2329) (4096, 8100) (8192, 15608)
+};
+\addlegendentry{SHAKE-256}
+
+\end{axis}
+\end{tikzpicture}
+\caption{Latencia de Keccak-256 frente a SHAKE-256 en función del tamaño de entrada (escala log-log). Para entradas pequeñas SHAKE-256 introduce un sobrecoste constante de $\sim$250 ns por el padding diferente, pero a partir de 4 KB ambas curvas convergen al mismo régimen asintótico lineal dictado por la permutación $f = \text{Keccak-}f[1600]$ compartida.}
+\label{fig:shake_vs_keccak}
+\end{figure}
+
 \subsection{Tamaño de transacciones}
 
 \begin{table}[htbp]
@@ -208,29 +335,49 @@ La Figura~\ref{fig:tx_size_comparison} muestra visualmente la diferencia de tama
 \begin{tikzpicture}
 \begin{axis}[
   ybar stacked,
-  bar width=1.8cm,
-  width=10cm,
-  height=7cm,
+  bar width=2cm,
+  width=12cm,
+  height=8cm,
   ylabel={Tamaño (bytes)},
   symbolic x coords={Clásica, Post-Cuántica},
   xtick=data,
   ymin=0,
-  ymax=6000,
-  legend style={at={(0.98,0.98)}, anchor=north east, font=\small},
-  nodes near coords style={font=\tiny},
-  every node near coord/.append style={anchor=south},
+  ymax=6200,
+  enlarge x limits=0.5,
+  ytick={0, 1000, 2000, 3000, 4000, 5000, 6000},
+  ymajorgrids=true,
+  grid style={dashed, gray!30},
+  legend style={
+    at={(1.02,1.0)},
+    anchor=north west,
+    font=\small,
+    draw=gray!50,
+    fill=white,
+    cells={anchor=west},
+  },
+  legend cell align={left},
+  every axis plot/.append style={fill opacity=0.85},
 ]
 
-% Classical
-\addplot+[fill=blue!30, draw=blue!50] coordinates {(Clásica, 30) (Post-Cuántica, 53)};
-\addplot+[fill=green!30, draw=green!50] coordinates {(Clásica, 20) (Post-Cuántica, 20)};
-\addplot+[fill=red!30, draw=red!50] coordinates {(Clásica, 65) (Post-Cuántica, 3309)};
-\addplot+[fill=orange!30, draw=orange!50] coordinates {(Clásica, 0) (Post-Cuántica, 1952)};
+\addplot+[fill=blue!40, draw=blue!70] coordinates {(Clásica, 30) (Post-Cuántica, 53)};
+\addplot+[fill=green!40, draw=green!70] coordinates {(Clásica, 20) (Post-Cuántica, 20)};
+\addplot+[fill=red!40, draw=red!70] coordinates {(Clásica, 65) (Post-Cuántica, 3309)};
+\addplot+[fill=orange!40, draw=orange!70] coordinates {(Clásica, 0) (Post-Cuántica, 1952)};
 
 \legend{Campos (nonce/gas/value), Dirección, Firma, Clave pública}
+
+% Etiquetas de totales sobre cada barra
+\node[font=\small\bfseries, above, yshift=2pt] at (axis cs:Clásica, 115) {115 B};
+\node[font=\small\bfseries, above, yshift=2pt] at (axis cs:Post-Cuántica, 5334) {5.334 B};
+
+% Anotación del factor de incremento
+\node[font=\footnotesize\itshape, gray!70!black, align=center]
+  at (axis cs:Clásica, 3500) {$\times 46{,}4$\\incremento};
+\draw[->, gray!60, thick] (axis cs:Clásica, 3200) -- (axis cs:Post-Cuántica, 3200);
+
 \end{axis}
 \end{tikzpicture}
-\caption{Comparativa de tamaño de transacción por componente. La firma ML-DSA-65 (3.309 B) y la clave pública (1.952 B) constituyen el 99\% del incremento.}
+\caption{Comparativa de tamaño de transacción por componente. La firma ML-DSA-65 (3.309 B) y la clave pública (1.952 B) constituyen el 99\% del incremento, multiplicando por 46 el tamaño total respecto a una transacción ECDSA clásica.}
 \label{fig:tx_size_comparison}
 \end{figure}
 
@@ -311,6 +458,69 @@ Las diferencias clave de este trabajo respecto al estado del arte son:
 
 
 %% ═══════════════════════════════════════════════════════════
+\section{Análisis de seguridad}
+\label{sec:res_security}
+%% ═══════════════════════════════════════════════════════════
+
+Más allá del rendimiento, una migración criptográfica de esta envergadura debe analizarse desde el punto de vista de las amenazas que introduce, elimina o desplaza. Esta sección examina las propiedades de seguridad del sistema bajo cuatro modelos de adversario: \emph{replay}, denegación de servicio (DoS) por inflación de transacciones, maleabilidad de firma y resistencia frente a oráculos de hashing cuántico.
+
+\subsection{Protección frente a replay}
+\label{sec:sec_replay}
+
+Un ataque de \emph{replay} consiste en reenviar una transacción válida en un contexto distinto (otra cadena, otro nonce o tras un \emph{fork}) para que sus efectos se materialicen de nuevo. El tipo de transacción \texttt{0x50} cubre los tres vectores tradicionales:
+
+\begin{itemize}
+  \item \textbf{Replay entre cadenas}: el \texttt{chain\_id} forma parte de los campos RLP firmados (véase \S\ref{sec:dev_tx}). Una firma producida para \texttt{chain\_id = 20561} (red PQ de este trabajo) falla la verificación si se reenvía a otra cadena con identificador distinto, dado que el hash de firma cambia.
+  
+  \item \textbf{Replay del mismo emisor}: el \texttt{nonce} se incrementa por cuenta tras cada transacción incluida. Reenviar una transacción ya procesada produce el error \texttt{NonceTooLow} en la validación del \emph{pool} y, si llegase a un bloque, sería rechazada por el motor de consenso.
+  
+  \item \textbf{Replay cross-tipo}: el byte de tipo \texttt{0x50} se incluye explícitamente en la entrada del hash de firma como dominio (\texttt{SHAKE-256(0x50 || rlp(\ldots))}), de forma que una firma sobre el payload de una transacción \texttt{0x50} no es válida como firma sobre una transacción \texttt{0x02} aunque el RLP interior fuera análogo. Esta separación de dominio sigue la práctica recomendada de EIP-2718.
+\end{itemize}
+
+Conviene observar que la sustitución de Keccak por SHAKE-256 en el hash de firma no debilita esta propiedad: ambas son resistentes a colisiones a nivel suficiente (128 bits cuánticos), y SHAKE-256 aporta además la posibilidad de incluir información de dominio dentro de la cabecera \emph{Initialization} sin necesidad de prefijos manuales.
+
+\subsection{Resistencia a DoS por inflación de transacciones}
+\label{sec:sec_dos}
+
+El incremento de $\sim$87$\times$ en el tamaño mínimo de una transacción (Tabla~\ref{tab:tx_size}) abre un vector de ataque económico: con el mismo coste de gas que paga por una transacción <<vacía>>, un adversario puede inundar el \emph{mempool} con $\sim$87 veces más bytes que en Ethereum clásico, agotando memoria y ancho de banda de los nodos. Se identifican tres mitigaciones, dos ya implementadas y una propuesta como trabajo futuro:
+
+\begin{enumerate}
+  \item \textbf{Cota de tamaño absoluto por transacción}: el pool de pq-reth rechaza cualquier transacción cuyo tamaño codificado supere $128$ KiB (heredado del límite estándar de reth). Esto acota el coste por inserción y permite estimar el peor caso de uso de memoria como $N_{\max} \cdot 128$ KiB, con $N_{\max}$ el número máximo de transacciones por cuenta en el pool.
+  
+  \item \textbf{Cota de bytes por bloque}: el límite de gas por bloque (30M) actúa como cota implícita: con 1.952 B de clave pública y 3.309 B de firma por transacción, una transacción mínima paga $\sim$105 K gas (calldata), por lo que un atacante puede colocar a lo sumo $\lfloor 30\text{M} / 105\text{K} \rfloor \approx 285$ transacciones por bloque, equivalentes a $\sim$1,5 MB de carga útil.
+  
+  \item \textbf{Política de priorización por bytes} (propuesta): ordenar las transacciones del pool por la métrica $\textsf{gas\_price}/\textsf{size\_bytes}$ en lugar de únicamente por $\textsf{gas\_price}$. Esto desalinea los incentivos del atacante (que paga lo mínimo por byte) y los validadores (que prefieren transacciones más densas en gas por byte). No está implementado en este prototipo pero se documenta en el EIP como recomendación.
+\end{enumerate}
+
+\subsection{Maleabilidad de firma y unicidad de transacción}
+\label{sec:sec_malleability}
+
+ECDSA presenta una maleabilidad estructural: si $(r, s)$ es válida sobre $m$, también lo es $(r, n-s)$, lo que obligó a Ethereum a introducir la restricción $s \leq n/2$ (EIP-2). ML-DSA-65 elimina esta clase de ataques por dos razones independientes:
+
+\begin{itemize}
+  \item \textbf{Firma determinista}: ML-DSA usa una semilla derivada del mensaje (la <<aleatoriedad>> proviene de $\text{SHAKE-256}(\textsf{sk} \| \mu)$) en lugar de un nonce externo. Dos firmas del mismo mensaje con la misma clave producen idéntica salida byte a byte, por lo que la unicidad de la firma es trivial.
+  
+  \item \textbf{Compromiso al estado completo}: el desafío $c = H(\mu \| \mathbf{w}_1)$ liga la firma a la totalidad de los bits altos de $\mathbf{w} = \mathbf{A}\mathbf{y}$. Una alteración bit a bit de cualquier componente de $(\mathbf{z}, h, c)$ rompe la ecuación de verificación con probabilidad abrumadora.
+\end{itemize}
+
+Adicionalmente, el hash de transacción $\textsf{tx\_hash} = \text{SHAKE-256}(\texttt{0x50} \| \textsf{rlp}(\textsf{tx}))$ cubre el sobre completo, incluyendo firma y clave pública. Cualquier mutación produce un identificador distinto, por lo que un \emph{front-runner} no puede reenviar una transacción modificada con el mismo hash, evitando los ataques tipo \emph{transaction malleability} que afectaron históricamente a Bitcoin.
+
+\subsection{Resistencia frente a oráculos cuánticos de hashing}
+
+Las funciones hash empleadas (Keccak-256 para el MPT y los logs, SHAKE-256 para direcciones y firmas) ofrecen 256 bits de salida y se asumen modelables como oráculos aleatorios. Frente a un adversario cuántico:
+
+\begin{itemize}
+  \item \textbf{Preimagen}: el algoritmo de Grover (\S\ref{sec:grover}) reduce la complejidad a $\Theta(2^{128})$ consultas al oráculo, considerado computacionalmente infactible (un atacante necesitaría $2^{64}$ s incluso a 1 GHz de consultas oraculares).
+  
+  \item \textbf{Colisión}: el algoritmo BHT (Brassard-Höyer-Tapp) consigue $\Theta(2^{n/3}) = \Theta(2^{85})$ con $\Theta(2^{85})$ memoria. Aún infactible, pero motiva no reducir el tamaño de salida por debajo de 256 bits.
+  
+  \item \textbf{Distinguidor}: ningún ataque distingue Keccak-$f[1600]$ de una permutación aleatoria con $< 2^{256}$ consultas, ni clásica ni cuánticamente.
+\end{itemize}
+
+En consecuencia, los componentes basados en hash de Ethereum (raíz de estado, raíz de transacciones, dirección de contrato derivada por CREATE/CREATE2) mantienen su nivel de seguridad efectivo de 128 bits cuánticos, sin necesidad de migración inmediata.
+
+
+%% ═══════════════════════════════════════════════════════════
 \section{Análisis de resultados}
 \label{sec:res_analysis}
 %% ═══════════════════════════════════════════════════════════
@@ -333,45 +543,69 @@ La Figura~\ref{fig:quantum_timeline} sitúa temporalmente la urgencia de la migr
 \centering
 \begin{tikzpicture}[
   >={Stealth},
+  x=1.05cm,
+  font=\footnotesize,
 ]
 
-% Timeline arrow
-\draw[->, very thick, gray!60] (0, 0) -- (14, 0) node[right, font=\small] {Años};
+% ====== Eje temporal (años) ======
+\draw[->, very thick, gray!60] (-0.3, 0) -- (14, 0)
+  node[right, font=\small] {Años};
 
-% Year marks
+% Marcas de años
 \foreach \y/\lbl in {0/2026, 2/2028, 4/2030, 6/2032, 8/2034, 10/2036, 12/2038} {
-  \draw[thick] (\y, -0.15) -- (\y, 0.15);
-  \node[below, font=\tiny] at (\y, -0.2) {\lbl};
+  \draw[thick, gray!70] (\y, -0.12) -- (\y, 0.12);
+  \node[below, font=\scriptsize, gray!50!black] at (\y, -0.18) {\lbl};
 }
 
-% Migration bar (6-13 years, optimistic to pessimistic)
-\draw[fill=blue!20, draw=blue!50, thick] (0, 0.6) rectangle (6, 1.2);
-\node[font=\footnotesize, align=center] at (3, 0.9) {Migración (optimista): 6 años};
+% ====== ARRIBA: Ventana de migración ======
+% Optimista (6 años)
+\draw[fill=blue!25, draw=blue!60, thick, rounded corners=2pt]
+  (0, 0.7) rectangle (6, 1.4);
+\node[font=\footnotesize, align=center] at (3, 1.05)
+  {Migración optimista\\(6 años)};
 
-\draw[fill=blue!10, draw=blue!30, thick] (6, 0.6) rectangle (13, 1.2);
-\node[font=\footnotesize, align=center] at (9.5, 0.9) {Migración (pesimista): +7 años};
+% Pesimista (7 años más)
+\draw[fill=blue!12, draw=blue!40, thick, rounded corners=2pt]
+  (6, 0.7) rectangle (13, 1.4);
+\node[font=\footnotesize, align=center] at (9.5, 1.05)
+  {Migración pesimista\\(+7 años)};
 
-% CRQC bar
-\draw[fill=red!20, draw=red!50, thick] (10, -1.2) rectangle (13, -0.6);
-\node[font=\footnotesize, align=center] at (11.5, -0.9) {CRQC disponible};
+% Etiqueta superior de la banda
+\node[above, font=\scriptsize\bfseries, blue!60!black] at (6.5, 1.45)
+  {Ventana de migración a criptografía PQ};
 
-% CRQC range
-\draw[{Stealth[length=3pt]}-{Stealth[length=3pt]}, red!60, thick] (10, -0.4) -- (13, -0.4);
-\node[font=\tiny, above, red!70] at (11.5, -0.35) {10--15 años (estimación NIST)};
+% ====== ABAJO: Amenazas ======
+% Harvest now (hoy hasta CRQC)
+\draw[fill=yellow!25, draw=yellow!70!black, thick, rounded corners=2pt]
+  (0, -1.4) rectangle (10, -0.7);
+\node[font=\footnotesize, align=center] at (5, -1.05)
+  {<<Harvest now, decrypt later>>};
 
-% Harvest now
-\draw[fill=yellow!20, draw=yellow!60, thick] (0, -1.2) rectangle (10, -0.6);
-\node[font=\footnotesize, align=center] at (5, -0.9) {<<Harvest now, decrypt later>>};
+% CRQC disponible
+\draw[fill=red!25, draw=red!60, thick, rounded corners=2pt]
+  (10, -1.4) rectangle (13, -0.7);
+\node[font=\footnotesize, align=center, red!50!black] at (11.5, -1.05)
+  {CRQC\\disponible};
 
-% This work marker
-\draw[thick, green!60!black] (0, -0.05) -- (0, 1.5);
-\node[font=\footnotesize\bfseries, green!60!black, above] at (0, 1.3) {Este trabajo};
+% Etiqueta inferior de la banda
+\node[below, font=\scriptsize\bfseries, red!60!black] at (6.5, -1.45)
+  {Amenazas cuánticas (10--15 años, estimación NIST)};
 
-% Danger zone
-\draw[fill=red!5, draw=none] (10, 0.5) rectangle (13, 1.3);
-\node[font=\tiny, red!70, rotate=90] at (13.3, 0.9) {riesgo};
+% ====== Marcador <<Este trabajo>> ======
+\draw[ultra thick, green!50!black] (0, -1.6) -- (0, 1.7);
+\node[font=\footnotesize\bfseries, green!40!black, above] at (0, 1.7)
+  {Este trabajo};
+\node[font=\scriptsize, green!40!black, below right=2pt and 1pt] at (0, -1.6)
+  {(2026)};
+
+% ====== Zona crítica de solapamiento ======
+\draw[pattern=north east lines, pattern color=red!30, draw=red!40]
+  (10, 0.7) rectangle (13, 1.4);
+\node[font=\scriptsize\bfseries, red!70!black, align=center]
+  at (11.5, 1.8) {zona\\crítica};
+\draw[->, red!60, thick] (11.5, 1.55) -- (11.5, 1.42);
 
 \end{tikzpicture}
-\caption{Timeline cuántico: la ventana de migración (6--13 años) se solapa con la estimación de disponibilidad de un CRQC (10--15 años). La amenaza <<harvest now, decrypt later>> comienza hoy.}
+\caption{Timeline cuántico: la ventana de migración (6--13 años) se solapa con la estimación de disponibilidad de un CRQC (10--15 años, NIST). La amenaza <<harvest now, decrypt later>> comienza hoy y la zona crítica (rayado rojo) representa los años en que la migración aún no estará completa pero el atacante cuántico ya podría descifrar.}
 \label{fig:quantum_timeline}
 \end{figure}

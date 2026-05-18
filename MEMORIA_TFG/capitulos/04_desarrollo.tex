@@ -201,6 +201,53 @@ La serialización sigue el formato EIP-2718:
 
 El \emph{crate} \texttt{reth-pq-primitives/src/rlp.rs} implementa los \emph{traits} \texttt{Encodable} y \texttt{Decodable} de \texttt{alloy-rlp} con validación estricta: la firma debe tener exactamente 3.309 bytes y la clave pública exactamente 1.952 bytes.
 
+La Figura~\ref{fig:tx_bytefield} representa el \emph{layout} físico de una transacción \texttt{0x50} mínima (transferencia nativa, \texttt{input} vacío). El sobre RLP introduce cabeceras de longitud variable: cuatro bytes para el prefijo de lista largo y dos bytes adicionales para los prefijos individuales de la firma y la clave pública (ambas $> 55$ B, por lo que RLP las codifica con prefijo \texttt{0xb9 0xXXXX}). El resultado neto es un sobre de aproximadamente $5.293$ bytes para una transferencia mínima y crece linealmente con el campo \texttt{input}.
+
+\begin{figure}[htbp]
+\centering
+\begin{bytefield}[bitwidth=0.95em, bitheight=2.4\baselineskip,
+                  endianness=big,
+                  boxformatting={\centering\footnotesize}]{16}
+  \bitheader{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15} \\
+  \bitbox{1}{\texttt{50}}
+  \bitbox{1}{$\ell_0$}
+  \bitbox{1}{$\ell_1$}
+  \bitbox{1}{$\ell_2$}
+  \bitbox{3}{\scriptsize chain\_id}
+  \bitbox{4}{\scriptsize nonce / gas\_price / gas\_limit} \\
+  \bitbox{5}{\scriptsize to (20 B)}
+  \bitbox{6}{\scriptsize value / input}
+  \bitbox{1}{\scriptsize $\sigma_\text{p}$}
+  \bitbox{4}{\scriptsize firma ML-DSA-65 $\sigma$ (3.309 B)} \\
+  \wordbox{1}{\scriptsize \ldots continuación de $\sigma$ \ldots} \\
+  \bitbox{1}{\scriptsize $p_\text{p}$}
+  \bitbox{15}{\scriptsize clave pública $\mathit{pk}$ (1.952 B)} \\
+  \wordbox{1}{\scriptsize \ldots continuación de $\mathit{pk}$ hasta el byte 5.293 \ldots}
+\end{bytefield}
+
+\vspace{0.6em}
+
+{\footnotesize
+\begin{tabular}{@{}llr@{}}
+\toprule
+\textbf{Offset (B)} & \textbf{Campo} & \textbf{Tamaño (B)} \\
+\midrule
+\texttt{0x0000}                 & Tipo de transacción \texttt{0x50}                        & 1 \\
+\texttt{0x0001}--\texttt{0x0003} & Cabecera RLP de lista larga \texttt{0xfa $\ell_1 \ell_2$}  & 3 \\
+\texttt{0x0004}--\texttt{0x001f} & \texttt{chain\_id}, \texttt{nonce}, \texttt{gas\_price}, \texttt{gas\_limit}, \texttt{to}, \texttt{value}, \texttt{input}  & $\sim$28 \\
+\texttt{0x0020}                 & Prefijo RLP de la firma \texttt{0xb9 0x0c 0xed}             & 3 \\
+\texttt{0x0023}--\texttt{0x0d10} & Firma ML-DSA-65 $\sigma$                                  & 3.309 \\
+\texttt{0x0d11}                 & Prefijo RLP de la clave pública \texttt{0xb9 0x07 0xa0}     & 3 \\
+\texttt{0x0d14}--\texttt{0x14ad} & Clave pública $\mathit{pk}$                              & 1.952 \\
+\midrule
+\multicolumn{2}{l}{\textbf{Total mínimo (input vacío)}}                                                       & \textbf{$\sim$5.299} \\
+\bottomrule
+\end{tabular}
+}
+\caption{Disposición de bytes de una transacción \texttt{0x50} mínima (transferencia nativa con \texttt{input} vacío). El byte de tipo va fuera del sobre RLP (regla EIP-2718). El 99\% del espacio lo ocupan la firma ML-DSA-65 (3.309 B) y la clave pública (1.952 B). El esquema solo representa los primeros 32 bytes y un fragmento de los campos largos; el resto se denota con elipsis.}
+\label{fig:tx_bytefield}
+\end{figure}
+
 \subsection{Recuperación del remitente}
 
 A diferencia de ECDSA, ML-DSA-65 no soporta recuperación de clave pública. El remitente se determina en tres pasos:
@@ -267,6 +314,7 @@ La Figura~\ref{fig:tx_flow} muestra el flujo completo de una transacción post-c
 El \emph{crate} \texttt{reth-pq-evm} extiende la máquina virtual de Ethereum con dos nuevas primitivas y deshabilita las operaciones criptográficas vulnerables.
 
 \subsection{Opcode PQHASH (\texttt{0x21})}
+\label{sec:opcode_pqhash}
 
 Se introduce un nuevo opcode adyacente a \texttt{KECCAK256} (\texttt{0x20}):
 
@@ -292,6 +340,7 @@ Semántica & $\text{SHAKE-256}(\texttt{memory}[\texttt{offset}..\texttt{offset}+
 El opcode se inserta en la tabla de instrucciones de \texttt{revm} dentro del método \texttt{PqEvmFactory::create\_evm()}, reutilizando la infraestructura de expansión de memoria y la lógica de cálculo de gas de \texttt{KECCAK256}.
 
 \subsection{Precompilado ML-DSA-65 (\texttt{0x0100})}
+\label{sec:precompile_mldsa}
 
 Se despliega un precompilado en la dirección \texttt{0x0000...0100} que permite la verificación de firmas ML-DSA-65 desde contratos inteligentes:
 
@@ -310,6 +359,7 @@ La entrada es una concatenación de 5.293 bytes: hash del mensaje (32 bytes) $\|
 El coste de gas (3.450) se calibra a partir de \emph{benchmarks}: la verificación ML-DSA-65 tarda $\sim$42 $\mu$s en hardware moderno, a $\sim$61 gas/$\mu$s con un factor de seguridad de 1,35$\times$.
 
 \subsection{Precompilados deshabilitados}
+\label{sec:precompilados_off}
 
 Los precompilados basados en curvas elípticas y emparejamientos bilineales se reemplazan por funciones que devuelven error (consumiendo todo el gas disponible):
 
@@ -321,6 +371,32 @@ Los precompilados basados en curvas elípticas y emparejamientos bilineales se r
 \end{itemize}
 
 Los precompilados de funciones hash (\texttt{0x02} SHA-256, \texttt{0x03} RIPEMD-160, \texttt{0x09} Blake2f), la identidad (\texttt{0x04}) y la exponenciación modular (\texttt{0x05}) se mantienen activos, al ser resistentes a ataques cuánticos.
+
+\subsection{Decisión de diseño: simplificación de precompilados}
+\label{sec:precompile_decision}
+
+La propuesta inicial de este Trabajo Fin de Grado contemplaba un conjunto de \emph{cuatro} precompilados post-cuánticos para cubrir las primitivas criptográficas más relevantes:
+
+\begin{itemize}
+  \item \texttt{0x100}: BLAKE3-512 (función hash extensible alternativa a Keccak/SHAKE).
+  \item \texttt{0x101}: ML-DSA-65 (verificación de firma).
+  \item \texttt{0x102}: ML-KEM-768 (encapsulación/desencapsulación de claves).
+  \item \texttt{0x103}: derivación de claves PQ a partir de semillas.
+\end{itemize}
+
+Durante la fase de diseño detallado se decidió consolidar el conjunto en un único precompilado activo (\texttt{0x0100}, ML-DSA-65 verify). Las razones que justifican esta simplificación son las siguientes:
+
+\begin{enumerate}
+  \item \textbf{BLAKE3 no aporta ventaja post-cuántica.} Las funciones hash basadas en construcciones Merkle--Damgård o esponja (SHA-256, SHA-3/Keccak, SHAKE) ya son resistentes a Grover; la duplicación de longitud de salida proporciona el mismo margen de seguridad ($\sim$128 bits cuánticos para un hash de 256 bits). Añadir BLAKE3 introduciría una primitiva extra sin mejora criptográfica medible y ampliaría la superficie de auditoría sin contraprestación. Cuando se requiere SHAKE-256 desde la EVM, este trabajo lo expone mediante el opcode \texttt{PQHASH} (\S\ref{sec:opcode_pqhash}), que es estructuralmente más barato que un precompilado.
+
+  \item \textbf{ML-KEM opera en otra capa.} El mecanismo de encapsulación de claves es una primitiva de \emph{transporte} entre nodos (handshake del canal P2P para sustituir el ECDH actual de devp2p), no una operación de contrato inteligente. No existe un caso de uso natural en el que un contrato necesite ejecutar \textsf{Encaps} o \textsf{Decaps} on-chain: las claves simétricas resultantes carecen de sentido en un entorno público. Por consistencia con el principio de \emph{separación de capas}, ML-KEM se mantiene como dependencia del cliente (\texttt{ml-lattice-rs/kyber/}) pero no se expone como precompilado.
+
+  \item \textbf{Derivación de claves PQ vía opcode.} El precompilado \texttt{0x103} originalmente previsto se subsume en el opcode \texttt{PQHASH}: cualquier contrato que necesite derivar claves o identificadores a partir de SHAKE-256 puede hacerlo con una sola instrucción de bytecode, evitando el coste de invocación de un precompilado (overhead de \texttt{CALL} más argumentos de pila).
+
+  \item \textbf{Principio de mínima superficie criptográfica.} Cada precompilado adicional representa un punto fijo en el protocolo: una vez desplegado, su semántica no puede modificarse sin un \emph{hard fork}. Reducir el conjunto inicial al mínimo necesario (verificación ML-DSA-65) facilita la auditoría, simplifica la implementación cruzada por parte de otros clientes Ethereum (geth, Nethermind, Besu, Erigon) y deja margen para añadir nuevos precompilados de forma incremental conforme aparezcan casos de uso justificados.
+\end{enumerate}
+
+El resultado es un diseño más conservador y alineado con la filosofía minimalista de las EIP recientes (EIP-7212 \emph{secp256r1 precompile}, EIP-2537 \emph{BLS12-381}): un único precompilado por familia criptográfica, con interfaz binaria sencilla y coste de gas calibrado empíricamente.
 
 
 %% ═══════════════════════════════════════════════════════════

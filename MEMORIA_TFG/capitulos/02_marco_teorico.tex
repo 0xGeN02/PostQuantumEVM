@@ -1,4 +1,5 @@
 \chapter{MARCO TEÓRICO}
+\label{cap:marco_teorico}
 
 Este capítulo presenta los fundamentos matemáticos y tecnológicos sobre los que se construye el trabajo. Se parte de la criptografía de curva elíptica (la primitiva que se pretende reemplazar), se introducen los modelos de computación cuántica y los algoritmos que la amenazan, se formalizan los problemas de retículos que fundamentan la alternativa post-cuántica, y se describe la infraestructura de Ethereum que es objeto de modificación.
 
@@ -48,6 +49,8 @@ Dado un punto $Q = k \cdot G$ en $E(\mathbb{F}_p)$, donde $G$ es un generador co
 
 Los mejores algoritmos clásicos para el ECDLP (Pollard's $\rho$, baby-step giant-step) tienen complejidad $O(\sqrt{n}) \approx O(2^{128})$ para secp256k1.
 
+\paragraph{Mapa biyectivo $k \leftrightarrow Q$ y unilateralidad.} La función $f_G: \mathbb{Z}_n \to \langle G \rangle \subset E(\mathbb{F}_p)$, $k \mapsto kG$ es un homomorfismo de grupos biyectivo (pues $\langle G \rangle$ es cíclico de orden $n$). El cálculo de $f_G$ (multiplicación escalar) es eficiente: $O(\log n)$ adiciones de puntos con el algoritmo \emph{double-and-add}. La inversa $f_G^{-1}$, sin embargo, es precisamente el ECDLP. ECDSA, ECDH y todas las operaciones de ecrecover explotan esta asimetría: el firmante calcula $kG$ trivialmente, mientras que cualquier atacante con conocimiento únicamente de $Q$ se enfrenta a un problema $\Theta(2^{128})$. Es esta unilateralidad la que el algoritmo de Shor destruye al transformarla en un problema $\Theta((\log n)^3)$ en un computador cuántico tolerante a fallos.
+
 \subsection{Esquema de firma ECDSA}
 
 El esquema ECDSA consta de tres algoritmos:
@@ -73,6 +76,8 @@ El esquema ECDSA consta de tres algoritmos:
     \item Aceptar si $r \equiv x_1 \pmod{n}$.
   \end{enumerate}
 \end{enumerate}
+
+\paragraph{Maleabilidad inherente.} Una propiedad estructural de ECDSA es que si $(r, s)$ es una firma válida sobre $m$, entonces $(r, -s \bmod n)$ también lo es: ambas verifican porque $x_1$ depende solo de $r$. Esta \emph{maleabilidad de firma} obligó a Ethereum a introducir la restricción $s \leq n/2$ (EIP-2) para normalizar el formato. ML-DSA, al ser determinista y al cubrir toda la firma con el hash de desafío, no presenta esta degeneración (véase \S\ref{sec:mldsa}).
 
 \subsection{Recuperación de clave pública (ecrecover)}
 
@@ -296,11 +301,9 @@ La Figura~\ref{fig:grover_circuit} muestra la estructura del circuito de Grover 
 }
 
 % Brace for iterations
-\draw[brace] (2.1, -3.3) -- (8.5, -3.3) node[midway, below=8pt, font=\small] {$k_{\text{opt}} = \lfloor \frac{\pi}{4}\sqrt{N/M} \rfloor$ iteraciones};
-
-% Labels
-\node[font=\footnotesize, align=center] at (2.8, -3.9) {oráculo};
-\node[font=\footnotesize, align=center] at (4.5, -3.9) {difusión};
+\draw[brace] (2.1, -3.3) -- (8.5, -3.3)
+  node[midway, below=14pt, font=\normalsize]
+  {$\displaystyle k_{\text{opt}} = \left\lfloor \tfrac{\pi}{4}\sqrt{N/M} \right\rfloor \text{ iteraciones}$};
 
 \end{tikzpicture}
 \caption{Circuito de Grover para $n=4$ qubits. Cada iteración aplica el oráculo de fase $O_f$ (invierte la fase de las soluciones) y el operador de difusión $D = 2\ket{s}\bra{s} - I$ (amplifica la amplitud de los estados marcados).}
@@ -321,6 +324,10 @@ Un \emph{retículo} $\mathcal{L}$ en $\mathbb{R}^n$ es un subgrupo discreto de $
 \end{equation}
 \end{definicion}
 
+Una propiedad fundamental de los retículos es que admiten infinitas bases distintas: si $\mathbf{B}$ es una base de $\mathcal{L}$ y $\mathbf{U} \in \mathbb{Z}^{n \times n}$ es una matriz unimodular (es decir, $\det(\mathbf{U}) = \pm 1$), entonces $\mathbf{B}' = \mathbf{B}\mathbf{U}$ es también una base del mismo retículo. La calidad de una base (cuán cortos y ortogonales son sus vectores) es lo que determina la dificultad de los problemas computacionales sobre $\mathcal{L}$; el algoritmo LLL \parencite{lenstra1982lll} permite encontrar bases reducidas con factor de aproximación $2^{n/2}$ en tiempo polinómico, pero no resuelve los problemas exactos.
+
+El \emph{determinante} (o volumen fundamental) de un retículo se define como $\det(\mathcal{L}) = |\det(\mathbf{B})|$ y es invariante respecto a la elección de base. La cota de Minkowski establece que $\lambda_1(\mathcal{L}) \leq \sqrt{n} \cdot \det(\mathcal{L})^{1/n}$, proporcionando un techo teórico para la longitud del vector más corto.
+
 \subsection{Problemas computacionales duros}
 
 \begin{definicion}[Problema del Vector más Corto (SVP)]
@@ -331,7 +338,90 @@ Dado un retículo $\mathcal{L}(\mathbf{B})$, encontrar un vector no nulo $\mathb
 Dado un retículo $\mathcal{L}(\mathbf{B})$ y un punto objetivo $\mathbf{t} \in \mathbb{R}^n$, encontrar $\mathbf{v} \in \mathcal{L}$ que minimice $\|\mathbf{v} - \mathbf{t}\|$.
 \end{definicion}
 
-Los problemas SVP y CVP son NP-hard en su versión exacta. Incluso sus versiones aproximadas (con factores de aproximación polinómicos) se conjeturan difíciles tanto para computadoras clásicas como cuánticas, lo que constituye la base de seguridad de la criptografía basada en retículos.
+Junto a SVP y CVP se manejan varias variantes computacionales relevantes para los esquemas post-cuánticos:
+
+\begin{itemize}
+  \item \textbf{$\gamma$-SVP (aproximado)}: encontrar $\mathbf{v} \in \mathcal{L} \setminus \{0\}$ con $\|\mathbf{v}\| \leq \gamma \cdot \lambda_1(\mathcal{L})$. Para $\gamma = \text{poly}(n)$ no se conoce algoritmo cuántico polinómico.
+  \item \textbf{GapSVP}: problema de decisión asociado: distinguir entre $\lambda_1(\mathcal{L}) \leq 1$ y $\lambda_1(\mathcal{L}) > \gamma$.
+  \item \textbf{BDD (\emph{Bounded Distance Decoding})}: dado $\mathbf{t} \in \mathbb{R}^n$ con la garantía de que existe $\mathbf{v} \in \mathcal{L}$ a distancia $\leq \alpha \lambda_1(\mathcal{L})$, encontrarlo. Es la variante <<promesa>> de CVP utilizada implícitamente en la reducción a LWE.
+  \item \textbf{SIS (\emph{Short Integer Solution})}: dada $\mathbf{A} \xleftarrow{\$} \mathbb{Z}_q^{n \times m}$, encontrar $\mathbf{z} \in \mathbb{Z}^m \setminus \{0\}$ con $\mathbf{A}\mathbf{z} \equiv \mathbf{0} \pmod{q}$ y $\|\mathbf{z}\| \leq \beta$. Es la base de las firmas tipo <<Fiat-Shamir con abortos>>, paradigma del que deriva ML-DSA.
+\end{itemize}
+
+Los problemas SVP y CVP exactos son NP-hard. Sus versiones aproximadas con factores polinómicos $\gamma = \text{poly}(n)$ se conjeturan difíciles tanto para computadoras clásicas como cuánticas: el mejor algoritmo conocido (BKZ con \emph{sieving}) tiene complejidad $2^{\Theta(n)}$ en tiempo y memoria, sin que Shor ni Grover aporten una aceleración polinómica como sucede con la factorización o el logaritmo discreto. Esta resistencia cuántica es la base de la seguridad de la criptografía basada en retículos.
+
+La Figura~\ref{fig:lattice_2d} ilustra geométricamente un retículo bidimensional, dos bases distintas (una <<buena>>, casi ortogonal, y una <<mala>>, casi degenerada), y los problemas SVP y CVP.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  >=Stealth,
+  scale=0.95,
+  font=\footnotesize,
+]
+
+% ====== Retículo: puntos en una rejilla generada por b1=(2,0.5), b2=(0.5,2) ======
+\foreach \i in {-2,-1,0,1,2,3} {
+  \foreach \j in {-2,-1,0,1,2,3} {
+    \pgfmathsetmacro{\px}{2*\i + 0.5*\j}
+    \pgfmathsetmacro{\py}{0.5*\i + 2*\j}
+    \fill[gray!70] (\px, \py) circle (1.2pt);
+  }
+}
+
+% Ejes (sutiles)
+\draw[->, gray!40, thin] (-3, 0) -- (6, 0) node[right, gray!50] {$x$};
+\draw[->, gray!40, thin] (0, -3) -- (0, 5) node[above, gray!50] {$y$};
+
+% ====== Base "buena": b1, b2 casi ortogonales ======
+\draw[->, very thick, blue!70!black] (0,0) -- (2, 0.5)
+  node[midway, below right, blue!50!black] {$\mathbf{b}_1$};
+\draw[->, very thick, blue!70!black] (0,0) -- (0.5, 2)
+  node[midway, above left, blue!50!black] {$\mathbf{b}_2$};
+
+% Paralelogramo fundamental
+\fill[blue!10, opacity=0.4] (0,0) -- (2,0.5) -- (2.5,2.5) -- (0.5,2) -- cycle;
+
+% ====== Base "mala": b1', b2' casi paralelos ======
+% b1' = b1 = (2, 0.5); b2' = b1 + b2 = (2.5, 2.5)... mejor algo más cerca
+% Tomemos b1' = (2, 0.5) y b2' = 2*b1 + b2 = (4.5, 3)
+\draw[->, dashed, thick, red!70!black] (0,0) -- (4.5, 3)
+  node[midway, above left, red!60!black, xshift=-2pt] {$\mathbf{b}_2'$};
+% b1' es el mismo b1, lo dibujamos con otro estilo encima
+\draw[->, dashed, thick, red!70!black] (0,0) -- (2, 0.5);
+\node[red!60!black, below right=1pt and 0pt] at (1.6, 0.3) {$\mathbf{b}_1'$};
+
+% ====== SVP: vector más corto (es b2 = (0.5,2), longitud ~2.06) ======
+% En realidad el más corto entre los dibujados sería b1 (2, 0.5) longitud ~2.06
+% Marcamos b1 como SVP
+\node[blue!50!black, font=\scriptsize\bfseries, align=center]
+  at (2.6, -0.3) {SVP $\to \mathbf{b}_1$};
+
+% ====== CVP: punto objetivo t y vector más cercano ======
+\coordinate (t) at (3.2, 1.6);
+\fill[red!70] (t) circle (3pt);
+\node[red!70!black, right=2pt] at (t) {$\mathbf{t}$};
+
+% El punto del retículo más cercano a t = (3.2,1.6):
+% (2,0.5)+( 0.5,2)=(2.5,2.5) dist sqrt(0.49+0.81)≈1.14
+% (2,0.5)*2=(4,1) dist sqrt(0.64+0.36)=1.0 ← más cerca
+% (2*b1+b2-b2)= (4,1) sí
+\coordinate (vcvp) at (4, 1);
+\draw[->, very thick, green!50!black, dashed] (t) -- (vcvp);
+\fill[green!50!black] (vcvp) circle (2.5pt);
+\node[green!40!black, font=\scriptsize\bfseries, below right=1pt and 1pt] at (vcvp) {CVP};
+
+% Leyenda
+\node[draw, rounded corners, fill=white, align=left, font=\scriptsize, anchor=north west]
+  at (-3, 4.7) {
+    \textcolor{blue!70!black}{\textbf{---}} base buena ($\mathbf{b}_1, \mathbf{b}_2$, casi ortogonal)\\
+    \textcolor{red!70!black}{\textbf{- -}} base mala ($\mathbf{b}_1', \mathbf{b}_2'$, casi paralela)\\
+    \textcolor{green!50!black}{$\bullet$} vector del retículo más cercano a $\mathbf{t}$
+  };
+
+\end{tikzpicture}
+\caption{Retículo bidimensional $\mathcal{L}(\mathbf{B}) \subset \mathbb{R}^2$. El mismo retículo admite dos bases: una <<buena>>, casi ortogonal (sólida, azul), y otra <<mala>>, casi degenerada (punteada, roja). El problema SVP consiste en encontrar el vector no nulo más corto del retículo; el problema CVP, dado un punto objetivo $\mathbf{t}$ (rojo) fuera del retículo, consiste en encontrar el punto del retículo más cercano (verde). La dureza de ambos crece exponencialmente con la dimensión $n$ cuando solo se dispone de una base mala.}
+\label{fig:lattice_2d}
+\end{figure}
 
 \subsection{Learning With Errors (LWE)}
 
@@ -357,6 +447,13 @@ Sea $R_q = \mathbb{Z}_q[X]/(X^n + 1)$ un anillo de polinomios cociente, con $n$ 
 \end{definicion}
 
 Module-LWE generaliza tanto LWE (caso $n = 1$) como Ring-LWE (caso $k = 1$), ofreciendo un equilibrio entre seguridad y eficiencia. ML-DSA y ML-KEM se basan en Module-LWE.
+
+\paragraph{Aritmética en $R_q$ y la NTT.} La operación dominante en ML-DSA es la multiplicación de polinomios en $R_q = \mathbb{Z}_q[X]/(X^n+1)$ con $n=256$ y $q = 8.380.417$. Una multiplicación directa cuesta $\Theta(n^2)$, pero el primo $q$ se elige específicamente para que $X^n + 1$ se factorice completamente en $R_q$, es decir, para que exista una raíz $2n$-ésima primitiva de la unidad $\zeta \in \mathbb{Z}_q^*$ con $\zeta^{n} \equiv -1 \pmod{q}$. Bajo esa condición se aplica la \emph{Number Theoretic Transform} (NTT), la análoga modular de la DFT:
+\begin{equation}
+  \hat{a}_j = \sum_{i=0}^{n-1} a_i \, \zeta^{(2i+1)j} \bmod q, \qquad j = 0, \ldots, n-1,
+  \label{eq:ntt}
+\end{equation}
+que se calcula en $\Theta(n \log n)$ operaciones modulares. La multiplicación de dos polinomios $a, b \in R_q$ se reduce entonces a una multiplicación componente a componente en el dominio NTT: $a \cdot b = \text{NTT}^{-1}(\text{NTT}(a) \odot \text{NTT}(b))$. Esta optimización es la responsable de que la verificación de ML-DSA-65 ($\sim$42 $\mu$s) sea comparable o incluso más rápida que ECDSA sobre secp256k1 ($\sim$49 $\mu$s).
 
 \subsection{Justificación de la elección de retículos}
 
@@ -441,9 +538,83 @@ Se eligió ML-DSA-65 (nivel III, seguridad clásica de 192 bits, cuántica de 12
 
 
 %% ═══════════════════════════════════════════════════════════
+\section{ML-KEM (FIPS-203)}
+\label{sec:mlkem}
+%% ═══════════════════════════════════════════════════════════
+
+ML-KEM (\emph{Module Lattice-Based Key-Encapsulation Mechanism}), estandarizado como FIPS-203 \parencite{nistfips203} en agosto de 2024, es el sucesor del candidato CRYSTALS-Kyber. A diferencia de ML-DSA (firma digital), ML-KEM es un mecanismo de \emph{encapsulación de claves}: permite a dos partes establecer una clave simétrica compartida sobre un canal inseguro sin requerir un intercambio Diffie-Hellman vulnerable a Shor. Opera sobre el mismo tipo de anillo $R_q = \mathbb{Z}_q[X]/(X^{256}+1)$ que ML-DSA, pero con $q = 3.329$ (mucho menor, optimizado para encapsulación rápida).
+
+\subsection{Generación de claves}
+
+\begin{enumerate}
+  \item Generar una semilla $d \xleftarrow{\$} \{0,1\}^{256}$.
+  \item Expandir $d$ con SHAKE-128 para obtener la matriz $\mathbf{A} \in R_q^{k \times k}$.
+  \item Muestrear los vectores secretos $\mathbf{s}, \mathbf{e} \in R_q^k$ desde una distribución binomial centrada $B_\eta$ (coeficientes pequeños).
+  \item Calcular $\mathbf{t} = \mathbf{A}\mathbf{s} + \mathbf{e} \in R_q^k$.
+  \item La \emph{clave de encapsulación} es $ek = (\mathbf{A}, \mathbf{t})$; la \emph{clave de desencapsulación} es $dk = (\mathbf{s}, ek, H(ek), z)$, donde $z$ es una semilla para el rechazo implícito.
+\end{enumerate}
+
+\subsection{Encapsulación}
+
+Dado $ek$ del receptor, el emisor calcula $(ct, K) = \textsf{Encaps}(ek)$:
+
+\begin{enumerate}
+  \item Generar un mensaje aleatorio $m \xleftarrow{\$} \{0,1\}^{256}$.
+  \item Derivar $(K, r) = G(m \| H(ek))$, donde $G$ es SHA3-512.
+  \item Muestrear $\mathbf{r} \in R_q^k$ y errores $\mathbf{e}_1 \in R_q^k$, $e_2 \in R_q$ desde $B_\eta$ usando $r$ como semilla.
+  \item Calcular $\mathbf{u} = \mathbf{A}^\top \mathbf{r} + \mathbf{e}_1$ y $v = \mathbf{t}^\top \mathbf{r} + e_2 + \textsf{Compress}_q(m, 1)$.
+  \item El \emph{ciphertext} es $ct = (\textsf{Compress}_q(\mathbf{u}, d_u), \textsf{Compress}_q(v, d_v))$.
+  \item La clave compartida es $K \in \{0,1\}^{256}$.
+\end{enumerate}
+
+La compresión (descarte de bits bajos) es esencial: reduce el tamaño del ciphertext al precio de introducir un pequeño error adicional que la corrección de descodificación de LWE absorbe.
+
+\subsection{Desencapsulación}
+
+El receptor, conocedor de $dk$, recupera la clave compartida $K = \textsf{Decaps}(dk, ct)$:
+
+\begin{enumerate}
+  \item Descomprimir $\mathbf{u}'$ y $v'$ a partir de $ct$.
+  \item Calcular $m' = \textsf{Compress}_q(v' - \mathbf{s}^\top \mathbf{u}', 1)$.
+  \item Derivar $(K', r') = G(m' \| H(ek))$ y recomputar el ciphertext esperado $ct'$.
+  \item Si $ct = ct'$, devolver $K'$; en caso contrario, devolver $K_{\text{rej}} = J(z \| ct)$ (\emph{rechazo implícito}: el receptor devuelve una clave pseudoaleatoria indistinguible para evitar ataques de oráculo de descodificación).
+\end{enumerate}
+
+El rechazo implícito convierte el esquema CPA-seguro subyacente (Kyber.CPAPKE) en un KEM IND-CCA2 mediante la transformación de Fujisaki-Okamoto, sin requerir abortar la sesión.
+
+\subsection{Niveles de seguridad}
+
+\begin{table}[htbp]
+\centering
+\caption{Parámetros y tamaños de ML-KEM por nivel de seguridad.}
+\label{tab:mlkem_params}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Variante} & \textbf{NIST} & $k$ & \textbf{|ek| (B)} & \textbf{|dk| (B)} & \textbf{|ct| (B)} \\
+\midrule
+ML-KEM-512  & I   & 2 & 800   & 1.632 & 768   \\
+\textbf{ML-KEM-768}  & \textbf{III} & \textbf{3} & \textbf{1.184} & \textbf{2.400} & \textbf{1.088} \\
+ML-KEM-1024 & V   & 4 & 1.568 & 3.168 & 1.568 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La clave compartida $K$ siempre tiene 32 bytes (256 bits), independiente del nivel: ML-KEM solo se usa para acordar una semilla simétrica que luego alimenta a un cifrado de flujo (AES-256-GCM o ChaCha20-Poly1305).
+
+\paragraph{Rol en este trabajo.} ML-KEM no se utiliza en la capa de transacciones (donde ML-DSA-65 cubre la autenticación), sino que se reserva como primitiva para el \emph{handshake} del canal P2P entre nodos. La implementación reside en el módulo \texttt{ml-lattice-rs/kyber/} (envoltorio del \emph{crate} \texttt{ml-kem} de RustCrypto, conforme a FIPS-203) y expone una API ergonómica con los tres niveles de seguridad. Su despliegue activo en el protocolo de red queda como trabajo futuro (\S\ref{sec:futuro}), ya que el prototipo actual ejecuta los nodos en una red privada controlada donde el riesgo de \emph{man-in-the-middle} cuántico no es el factor crítico de validación.
+
+
+%% ═══════════════════════════════════════════════════════════
 \section{Ethereum y la Máquina Virtual de Ethereum (EVM)}
 \label{sec:ethereum}
 %% ═══════════════════════════════════════════════════════════
+
+Ethereum \parencite{wood2014ethereum} es una máquina de estados replicada y determinista en la que cada nodo de la red mantiene una copia consistente del mismo \emph{estado global} y aplica sobre él una función de transición $\Upsilon$ cada vez que se ejecuta una transacción. Formalmente, si $\sigma_t$ es el estado tras el bloque $t$ y $B_{t+1}$ es el siguiente bloque (una secuencia ordenada de transacciones $T_0, T_1, \ldots, T_{m-1}$), la regla de transición es
+\begin{equation}
+  \sigma_{t+1} = \Pi(\sigma_t, B_{t+1}) = \Omega\bigl(\Upsilon(\Upsilon(\ldots \Upsilon(\sigma_t, T_0) \ldots, T_{m-2}), T_{m-1}), B_{t+1}\bigr),
+  \label{eq:eth_state_transition}
+\end{equation}
+donde $\Omega$ aplica la finalización del bloque (mint del bloque, pagos de comisiones, etc.). El protocolo garantiza, mediante el consenso, que todos los nodos honestos converjan al mismo $\sigma_{t+1}$ a partir de $\sigma_t$ y $B_{t+1}$.
 
 \subsection{Arquitectura de capas}
 
@@ -455,7 +626,152 @@ Desde \emph{The Merge} (septiembre de 2022), Ethereum opera con una arquitectura
   \item \textbf{Capa de consenso (CL)}: Coordina los validadores Proof of Stake, gestiona las atestaciones y propuestas de bloques. Utiliza firmas BLS12-381.
 \end{itemize}
 
-Este trabajo modifica exclusivamente la capa de ejecución, dejando la capa de consenso como trabajo futuro (ver Sección \ref{sec:futuro}).
+Ambas capas se comunican mediante la \emph{Engine API} (JSON-RPC privado). Este trabajo modifica exclusivamente la capa de ejecución, dejando la capa de consenso como trabajo futuro (ver Sección \ref{sec:futuro}).
+
+\subsection{Modelo de cuentas y estado mundial}
+\label{sec:eth_accounts}
+
+A diferencia de Bitcoin (modelo UTXO), Ethereum emplea un modelo de cuentas basado en balances. El \emph{estado mundial} $\sigma$ es una aplicación finita
+\begin{equation}
+  \sigma : \mathcal{A} \rightharpoonup \mathcal{A}_{\text{state}},
+\end{equation}
+donde $\mathcal{A} = \{0,1\}^{160}$ es el espacio de direcciones de 20 bytes y cada cuenta $\sigma[a]$ es una tupla de cuatro campos
+\begin{equation}
+  \sigma[a] = (\textsf{nonce}, \textsf{balance}, \textsf{storageRoot}, \textsf{codeHash}).
+  \label{eq:account}
+\end{equation}
+
+Existen dos tipos de cuenta funcionalmente distintos:
+
+\begin{itemize}
+  \item \textbf{Cuentas de propiedad externa (EOA)}: controladas por una clave privada (en Ethereum clásico, una clave ECDSA secp256k1; en este trabajo, una clave ML-DSA-65). Su \texttt{codeHash} es el hash vacío $\texttt{keccak256}(\varepsilon)$ y su \texttt{storageRoot} es la raíz del trie vacío. Solo pueden originar transacciones firmando con la clave privada.
+  
+  \item \textbf{Cuentas de contrato}: creadas por una transacción de despliegue. Su \texttt{codeHash} apunta al bytecode EVM almacenado y su \texttt{storageRoot} es la raíz de un Merkle Patricia Trie que mapea claves de 256 bits a valores de 256 bits. No tienen clave privada y solo pueden ejecutarse como respuesta a un mensaje (interno o externo).
+\end{itemize}
+
+\subsection{Merkle Patricia Trie}
+\label{sec:mpt}
+
+El estado, los recibos y las transacciones de cada bloque se compactan en raíces criptográficas mediante el \emph{Modified Merkle Patricia Trie} (MPT), una estructura híbrida entre un \emph{radix trie} y un árbol de Merkle. Cada nodo se referencia por el hash de su codificación RLP, lo que confiere dos propiedades clave:
+
+\begin{itemize}
+  \item \textbf{Compromiso criptográfico}: la raíz $\textsf{stateRoot}$ del bloque condensa todo el estado en 32 bytes; cualquier modificación de una sola cuenta propaga un cambio determinista hasta la raíz.
+  \item \textbf{Pruebas de inclusión sucintas}: un cliente ligero puede verificar el valor $\sigma[a]$ a partir de $\textsf{stateRoot}$ y una prueba de tamaño $O(\log_{16} |\sigma|)$.
+\end{itemize}
+
+La cabecera del bloque contiene tres raíces MPT distintas:
+\begin{equation}
+  H = (\ldots, \textsf{stateRoot}, \textsf{txRoot}, \textsf{receiptsRoot}, \textsf{logsBloom}, \ldots).
+  \label{eq:header_roots}
+\end{equation}
+
+En este trabajo, las funciones hash empleadas por el MPT siguen siendo Keccak-256 por compatibilidad con el formato de bloque estándar de Ethereum: la separación SHAKE-256 / Keccak-256 se aplica únicamente a la derivación de direcciones y al hash de firma PQ, no al estado interno del nodo.
+
+\subsection{La EVM como máquina de pila}
+\label{sec:evm_arch}
+
+La EVM es una máquina virtual basada en pila con cinco regiones de memoria diferenciadas, todas operando sobre palabras de 256 bits:
+
+\begin{enumerate}
+  \item \textbf{Pila} (\emph{stack}): hasta 1024 elementos de 256 bits. Las instrucciones operan principalmente sobre los elementos superiores (push/pop, dup, swap).
+  \item \textbf{Memoria} (\emph{memory}): array de bytes lineal expandible. Volátil entre llamadas. Coste de gas cuadrático en el peor caso para penalizar consumo de RAM en los nodos.
+  \item \textbf{Almacenamiento} (\emph{storage}): mapa $\{0,1\}^{256} \to \{0,1\}^{256}$ persistente y específico de cada contrato; reside en el MPT de la cuenta.
+  \item \textbf{Calldata}: datos de entrada inmutables provistos por la transacción.
+  \item \textbf{Returndata}: datos retornados por la última llamada externa.
+\end{enumerate}
+
+La ejecución de una transacción $T$ que invoca a una cuenta de contrato $a$ es un bucle interpretado sobre el bytecode $\sigma[a].\textsf{code}$. Cada \emph{opcode} ($\texttt{ADD}, \texttt{MUL}, \texttt{SSTORE}, \texttt{CALL}, \ldots$) consume una cantidad de gas predefinida; cuando el gas se agota antes de que la ejecución termine, todos los cambios de estado se revierten (excepto el cobro de la comisión al firmante). Si la ejecución concluye, los cambios de $\sigma$ se materializan atómicamente.
+
+\subsection{Modelo de mensajes y contratos inteligentes}
+\label{sec:smart_contracts}
+
+Un \emph{mensaje} (en la terminología del \emph{yellow paper}) es la unidad de invocación interna a la EVM: una tupla \emph{(sender, recipient, value, input, gas)}. Las transacciones externas son simplemente mensajes firmados por una EOA. Los mensajes internos se generan mediante los opcodes \texttt{CALL}, \texttt{CALLCODE}, \texttt{DELEGATECALL} y \texttt{STATICCALL}, lo que permite la composición arbitraria de contratos: un contrato puede llamar a otro, este a un tercero, y así recursivamente hasta la profundidad límite de 1024.
+
+Un \emph{contrato inteligente} es, formalmente, una cuenta cuyo \texttt{codeHash} apunta a bytecode no vacío. La ABI (\emph{Application Binary Interface}) estándar codifica las invocaciones de funciones mediante un selector de 4 bytes (los primeros 4 bytes de $\texttt{keccak256}(\textsf{signature}_{\text{Solidity}})$) seguido de los argumentos codificados según las reglas ABI. El despacho a la función correcta es responsabilidad del propio bytecode del contrato, no del protocolo.
+
+El ciclo de vida típico de un contrato es:
+\begin{enumerate}
+  \item \textbf{Despliegue}: una transacción con $T.\textsf{to} = \varnothing$ y $T.\textsf{input}$ conteniendo el \emph{init code} crea una nueva cuenta. La dirección se deriva como $\texttt{keccak256}(\textsf{rlp}(sender, nonce))[12{:}32]$ (o por \texttt{CREATE2}, como $\texttt{keccak256}(\texttt{0xff} \| sender \| salt \| \texttt{keccak256}(init))[12{:}32]$).
+  \item \textbf{Inicialización}: la EVM ejecuta el init code, cuyo valor de retorno se almacena como bytecode definitivo del contrato.
+  \item \textbf{Invocación}: cualquier mensaje posterior con $T.\textsf{to} = a$ ejecuta el bytecode con el calldata como entrada.
+  \item \textbf{Autodestrucción} (\texttt{SELFDESTRUCT}, restringido desde EIP-6780): elimina el contrato y reembolsa su balance a una dirección beneficiaria.
+\end{enumerate}
+
+\subsection{Formalización como autómata finito determinista}
+\label{sec:evm_fsm}
+
+Aunque las descripciones anteriores siguen el estilo informal del \emph{Yellow Paper}, la EVM admite una formalización rigurosa como autómata finito determinista extendido (DFA con memoria auxiliar). Esta formalización conecta el diseño de la EVM con la teoría clásica de autómatas y lenguajes formales, y proporciona un marco para razonar sobre la corrección de las transiciones que introduce la migración post-cuántica (nuevo opcode \texttt{PQHASH}, precompilado \texttt{0x0100}, transacciones tipo \texttt{0x50}).
+
+\begin{definicion}[EVM como autómata]
+\label{def:evm_fsm}
+La Máquina Virtual de Ethereum se modela como la quíntupla
+\begin{equation}
+  \mathcal{M}_{\text{EVM}} = (Q, \Sigma, \delta, q_0, F),
+  \label{eq:evm_dfa}
+\end{equation}
+donde:
+\begin{itemize}
+  \item $Q = \text{PC} \times \text{Stack}^{\leq 1024} \times \text{Mem} \times \text{Storage} \times \mathbb{N}_{\text{gas}} \times \text{Calldata} \times \text{Returndata}$ es el conjunto de \emph{configuraciones}. Cada $q \in Q$ codifica la totalidad del estado de ejecución: contador de programa, pila (hasta 1024 palabras de 256 bits), memoria volátil, almacenamiento persistente del contrato, gas restante, datos de entrada y datos de retorno de la última llamada.
+  \item $\Sigma = \{0\text{x}00, 0\text{x}01, \ldots, 0\text{x}FF\}$ es el \emph{alfabeto} de instrucciones (256 opcodes posibles, de los cuales aproximadamente 142 están definidos en la especificación actual; los restantes son \texttt{INVALID}).
+  \item $\delta : Q \times \Sigma \to Q$ es la \emph{función de transición}: dado un estado $q$ y el opcode $\texttt{op}$ apuntado por $q.\text{PC}$, $\delta(q, \texttt{op})$ produce la siguiente configuración aplicando el efecto del opcode sobre la pila, la memoria, el almacenamiento, y decrementando $q.\text{gas}$ en el coste correspondiente. La función es \emph{determinista}: dada una misma $(q, \texttt{op})$, el resultado es único y reproducible en todos los nodos honestos.
+  \item $q_0 = (\text{PC}=0,\, \varepsilon,\, \mathbf{0},\, \sigma[a].\textsf{storage},\, g_0,\, \textsf{calldata},\, \varepsilon)$ es el \emph{estado inicial} de cada invocación: contador a cero, pila vacía, memoria a cero, almacenamiento heredado de la cuenta $a$, gas igual al \emph{gas\_limit} concedido, calldata provista por la transacción y returndata vacía.
+  \item $F = \{\textsf{STOP}, \textsf{RETURN}, \textsf{REVERT}, \textsf{INVALID}, \textsf{OOG}\}$ es el conjunto de \emph{estados terminales}. \texttt{STOP} y \texttt{RETURN} representan finalización exitosa (los cambios de $\sigma$ se materializan); \texttt{REVERT} indica error explícito (los cambios se descartan, el gas no consumido se devuelve); \texttt{INVALID} corresponde a una instrucción no reconocida o violación de invariantes (todo el gas se consume); \texttt{OOG} (\emph{out of gas}) se alcanza cuando $q.\text{gas} < \textsf{cost}(\texttt{op})$.
+\end{itemize}
+\end{definicion}
+
+La función de transición $\delta$ admite una descomposición canónica que ilustra su naturaleza:
+\begin{equation}
+  \delta(q, \texttt{op}) =
+    \begin{cases}
+      \textsf{OOG} & \text{si } q.\text{gas} < \textsf{cost}(\texttt{op}), \\
+      \textsf{INVALID} & \text{si } \texttt{op} \notin \Sigma_{\text{def}}, \\
+      \delta_{\texttt{op}}(q) & \text{en caso contrario},
+    \end{cases}
+  \label{eq:delta_evm}
+\end{equation}
+donde $\Sigma_{\text{def}} \subset \Sigma$ es el subconjunto de opcodes definidos y $\delta_{\texttt{op}}$ es la regla específica del opcode (por ejemplo, $\delta_{\texttt{ADD}}$ extrae los dos elementos superiores de la pila, los suma módulo $2^{256}$, y empuja el resultado).
+
+\paragraph{Extensión con el opcode \texttt{PQHASH}.} La introducción del opcode \texttt{0x21} (\texttt{PQHASH}) en este trabajo equivale a extender el alfabeto $\Sigma_{\text{def}}$ en una unidad y añadir una nueva regla $\delta_{\texttt{PQHASH}}$ que aplica SHAKE-256 sobre un fragmento de memoria. Esta extensión preserva el determinismo de $\delta$ y la naturaleza finita de $\Sigma$, por lo que el autómata resultante es estructuralmente equivalente al original: las propiedades de corrección y de convergencia del consenso se mantienen.
+
+\paragraph{Diagrama de estados.} La Figura \ref{fig:evm_dfa} representa gráficamente las clases de estados y las transiciones agregadas del autómata. Los estados internos durante la ejecución se agrupan en el nodo \textsc{Ejecutando}, cuyas autotransiciones modelan la evolución por aplicación sucesiva de $\delta$. Las transiciones a estados terminales determinan el destino final de la ejecución (commit o rollback).
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  ->, >=stealth, node distance=2.5cm, semithick,
+  every state/.style={align=center, minimum size=1.1cm, font=\small},
+  initial text={},
+]
+  \node[state, initial above, fill=blue!10] (q0) {$q_0$};
+  \node[state, right of=q0, xshift=1.5cm, fill=yellow!15] (run) {Ejecutando};
+  \node[state, accepting, above right of=run, xshift=1.5cm, fill=green!15] (stop) {\textsc{Stop}\\\textsc{Return}};
+  \node[state, right of=run, xshift=2cm, fill=orange!20] (revert) {\textsc{Revert}};
+  \node[state, below right of=run, xshift=1.5cm, fill=red!20] (oog) {\textsc{Oog}\\\textsc{Invalid}};
+
+  \path (q0) edge node[above, font=\scriptsize] {init} (run)
+        (run) edge[loop above] node[font=\scriptsize] {$\delta(q,\texttt{op})$} (run)
+        (run) edge[bend left=15] node[above, font=\scriptsize] {\texttt{STOP / RETURN}} (stop)
+        (run) edge node[above, font=\scriptsize, sloped] {\texttt{REVERT}} (revert)
+        (run) edge[bend right=15] node[below, font=\scriptsize, sloped] {gas$=0$ / op$\notin\Sigma_{\text{def}}$} (oog);
+\end{tikzpicture}
+\caption{Autómata finito determinista $\mathcal{M}_{\text{EVM}}$. La ejecución comienza en $q_0$, evoluciona por aplicaciones sucesivas de $\delta$ dentro del estado agregado \textsc{Ejecutando} (cada opcode consume gas y modifica la configuración), y converge a uno de los estados terminales: \textsc{Stop}/\textsc{Return} comprometen los cambios al estado mundial; \textsc{Revert} los descarta pero devuelve gas; \textsc{Oog}/\textsc{Invalid} descartan los cambios y consumen todo el gas.}
+\label{fig:evm_dfa}
+\end{figure}
+
+Este modelado conecta directamente el diseño del sistema con la teoría de autómatas finitos deterministas y lenguajes formales abordada en la titulación (RA RPFA-HABI-12 y RPFA-COMP-12, ver anexo de Resultados de Aprendizaje). En particular, demuestra que la EVM no es una máquina arbitrariamente compleja, sino un autómata cuyo alfabeto, conjunto de configuraciones, función de transición y conjunto de estados terminales pueden enumerarse exhaustivamente; cualidad imprescindible para que cualquier extensión post-cuántica preserve la propiedad de \emph{determinismo replicado} de la que depende el consenso.
+
+\subsection{Cómo la migración post-cuántica preserva los contratos}
+
+Un aspecto crítico para la viabilidad del sistema propuesto es que la compatibilidad de contratos inteligentes se mantenga. Los contratos existentes interactúan con la EVM a través de cuatro mecanismos:
+
+\begin{itemize}
+  \item \textbf{Opcodes aritméticos, lógicos y de control de flujo} ($\texttt{ADD}, \texttt{MUL}, \texttt{JUMPI}, \ldots$): independientes del modelo criptográfico subyacente; no requieren cambios.
+  \item \textbf{Opcodes de hashing} ($\texttt{KECCAK256}/\texttt{SHA3}$): preservados, garantizando que las claves de \texttt{mapping}, los selectores ABI y los \texttt{event topics} de contratos existentes sigan calculándose igual. Adicionalmente, este trabajo introduce el opcode \texttt{PQHASH} (\texttt{0x21}, ver \S\ref{sec:opcode_pqhash}) para exponer SHAKE-256 a contratos PQ-nativos.
+  \item \textbf{Opcodes de mensajes y direcciones} (\texttt{CALL}, \texttt{ADDRESS}, \texttt{CALLER}, \texttt{BALANCE}, etc.): operan sobre direcciones de 20 bytes; tanto las direcciones clásicas como las PQ tienen el mismo tamaño, por lo que los contratos no necesitan reconocer el origen criptográfico de la cuenta.
+  \item \textbf{Precompilados}: $\texttt{ecrecover}$ (\texttt{0x01}) se mantiene operativo durante el periodo de transición para verificar firmas históricas; las nuevas firmas se verifican mediante el precompilado \texttt{0x0100} (ver \S\ref{sec:precompile_mldsa}). Los precompilados de BN254, KZG y BLS12-381 se desactivan en este prototipo por ser cuánticamente vulnerables (ver \S\ref{sec:precompilados_off}).
+\end{itemize}
+
+Este principio de \emph{compatibilidad de aplicación}, junto con la separación de dominios entre direcciones clásicas y PQ, permite que el ecosistema de contratos existente (DEXes, stablecoins, NFTs, etc.) coexista con cuentas post-cuánticas durante toda la ventana de migración descrita en \S\ref{sec:problema_detallado}.
 
 \subsection{Transacciones tipadas (EIP-2718)}
 
@@ -483,6 +799,8 @@ donde \texttt{TransactionType} es un byte en el rango $[\texttt{0x00}, \texttt{0
 \bottomrule
 \end{tabular}
 \end{table}
+
+El uso del prefijo \texttt{0x50} (en lugar de un valor secuencial en el rango \texttt{0x05}--\texttt{0x4f}) es una decisión deliberada: el nibble alto \texttt{5} actúa como mnemónico de \emph{post-quantum} y deja espacio para que el proceso de estandarización de Ethereum asigne tipos clásicos sin colisión.
 
 \subsection{Precompilados}
 

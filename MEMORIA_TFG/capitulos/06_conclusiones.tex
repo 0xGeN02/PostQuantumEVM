@@ -67,6 +67,8 @@ Este trabajo demuestra que la migración de la capa de transacciones de un clien
   \item \textbf{Sin auditoría formal de la implementación criptográfica.} La biblioteca ml-lattice-rs envuelve la implementación RustCrypto (\texttt{ml-dsa}), que es una implementación de referencia pero no ha sido auditada formalmente para uso en producción.
   
   \item \textbf{Un solo cliente de ejecución.} La migración real de Ethereum requiere que todos los clientes (geth, Nethermind, Besu, Erigon, reth) implementen el mismo protocolo.
+  
+  \item \textbf{Sin VRF ni Merkle post-cuántico.} La propuesta inicial contemplaba módulos de VRF (\emph{Verifiable Random Function}) y árboles de Merkle basados en primitivas post-cuánticas. Por limitaciones temporales del proyecto, estos componentes no se completaron; las raíces MPT del prototipo siguen usando Keccak-256 (resistente a Grover con margen suficiente) y no se incorpora elección aleatoria verificable. Ambos elementos se documentan en la Sección \ref{sec:futuro}.
 \end{enumerate}
 
 
@@ -93,4 +95,8 @@ Este trabajo demuestra que la migración de la capa de transacciones de un clien
   \item \textbf{Presentación formal del EIP.} Someter la propuesta \texttt{eip-pq-tx.md} al proceso formal de EIP de Ethereum, incluyendo discusión en Ethereum Magicians, revisión por editores y presentación en All Core Devs.
   
   \item \textbf{Interoperabilidad cross-chain.} Diseñar puentes (\emph{bridges}) que permitan la verificación de firmas ML-DSA-65 desde otras cadenas EVM-compatibles, y evaluar la integración con rollups que ya utilizan pruebas de conocimiento cero.
+
+  \item \textbf{VRF post-cuántica.} Diseñar e implementar una función aleatoria verificable resistente a ataques cuánticos --- basada en retículos (Module-LWE) o en firmas de hash (XMSS, SPHINCS+) --- que permita la elección imparcial de líder en protocolos de consenso, reemplazando el actual mecanismo RANDAO (vulnerable indirectamente vía las claves BLS de los validadores). Este componente formaba parte de la propuesta inicial y queda pendiente como extensión natural del prototipo.
+
+  \item \textbf{Merkle post-cuántico.} Sustituir la función hash subyacente del Merkle Patricia Trie por una primitiva PQ-nativa (SHAKE-256 o un esquema basado en XMSS) y evaluar empíricamente el impacto en (i) el tamaño de las pruebas de inclusión light-client, (ii) la latencia de \emph{state root} en la verificación de bloques y (iii) la compatibilidad con clientes ligeros existentes. Esta línea constituye el complemento de hashing del trabajo actual y completa la propuesta inicial.
 \end{enumerate}
