@@ -750,8 +750,8 @@ donde $\Sigma_{\text{def}} \subset \Sigma$ es el subconjunto de opcodes definido
 
   \path (q0) edge node[above, font=\scriptsize] {init} (run)
         (run) edge[loop above] node[font=\scriptsize] {$\delta(q,\texttt{op})$} (run)
-        (run) edge[bend left=15] node[above, font=\scriptsize] {\texttt{STOP / RETURN}} (stop)
-        (run) edge node[above, font=\scriptsize, sloped] {\texttt{REVERT}} (revert)
+        (run) edge[bend left=15] (stop)
+        (run) edge (revert)
         (run) edge[bend right=15] node[below, font=\scriptsize, sloped] {gas$=0$ / op$\notin\Sigma_{\text{def}}$} (oog);
 \end{tikzpicture}
 \caption{Autómata finito determinista $\mathcal{M}_{\text{EVM}}$. La ejecución comienza en $q_0$, evoluciona por aplicaciones sucesivas de $\delta$ dentro del estado agregado \textsc{Ejecutando} (cada opcode consume gas y modifica la configuración), y converge a uno de los estados terminales: \textsc{Stop}/\textsc{Return} comprometen los cambios al estado mundial; \textsc{Revert} los descarta pero devuelve gas; \textsc{Oog}/\textsc{Invalid} descartan los cambios y consumen todo el gas.}
