@@ -1,1 +1,90 @@
-\section{Anexo 3}
+\section{Anexo 3: Estructura de repositorios}
+\label{sec:anexo_repos}
+
+\subsection*{Repositorio raíz: PostQuantumEVM}
+
+\begin{verbatim}
+PostQuantumEVM/
+├── MEMORIA_TFG/           Memoria del TFG (LaTeX)
+├── corpus/                Referencias bibliográficas
+├── docker-compose.yml     Despliegue 3 validadores + qiskit-api
+├── Dockerfile.pq-reth     Imagen Docker del nodo PQ
+├── docs/                  Benchmarks y figuras
+│   ├── benchmark_analysis.ipynb
+│   └── figures/           7 gráficos de rendimiento (PNG)
+├── e2e/                   Infraestructura E2E
+│   ├── run-e2e.sh         Script orquestador (local/k8s/external)
+│   ├── fixtures/          Keystore de prueba
+│   └── k8s/               Manifiestos Kubernetes (5 YAML)
+├── eips/
+│   └── eip-pq-tx.md       Propuesta EIP tipo 0x50
+├── ml-lattice-rs/         Submódulo: ML-DSA + ML-KEM en Rust
+├── pq-reth/               Fork de reth con crates PQ
+├── pq-wallet/             Workspace: wallet + E2E + seeder
+└── qiskit-api/            API de simulación cuántica
+\end{verbatim}
+
+\subsection*{pq-reth: Crates post-cuánticos}
+
+\begin{verbatim}
+pq-reth/crates/pq/
+├── reth-pq-primitives/    TX type 0x50, RLP, signing hash, address
+├── reth-pq-node-primitives/ NodePrimitives (PqPrimitives)
+├── reth-pq-consensus/     Validación TX ML-DSA-65
+├── reth-pq-precompile/    Precompilado ML-DSA (0x0100)
+├── reth-pq-evm/           PQHASH opcode (0x21), EVM config
+├── reth-pq-poa/           PoA: round-robin, sellado, validación
+├── reth-pq-pool/          Mempool: validación PQ
+└── reth-pq-node/          Wiring: PqNode, engine, payload
+\end{verbatim}
+
+\subsection*{pq-wallet: Workspace}
+
+\begin{verbatim}
+pq-wallet/
+├── pq-wallet-core/        Biblioteca: keygen, keystore, signer,
+│                          tx, rpc, error
+├── pq-wallet-cli/         9 subcomandos: new, address, balance,
+│                          send, deploy, receipt, sign, call,
+│                          export-seed
+├── pq-wallet-tui/         4 pestañas: Wallet, Transactions,
+│                          Blocks, Network
+├── pq-e2e-test/           15 escenarios en 6 fases
+└── pq-chain-seeder/       Sembrador de cadena para demostración
+\end{verbatim}
+
+\subsection*{qiskit-api: Simulación cuántica}
+
+\begin{verbatim}
+qiskit-api/
+├── src/
+│   ├── main.py            FastAPI app (v0.2.0)
+│   ├── models.py          Esquemas Pydantic
+│   └── routers/
+│       ├── shor.py        Endpoints Shor ECDLP
+│       └── grover.py      Endpoints Grover preimagen
+├── lib/
+│   ├── shor.py            Algoritmo de Shor (DFT modular 2D)
+│   ├── grover.py          Algoritmo de Grover (oráculo + difusión)
+│   ├── secp256k1_toy.py   Curva F_17: y^2 = x^3 + 7
+│   └── keccak_toy.py      Keccak reducido (4 bits, 2 rondas)
+└── examples/              Notebooks Jupyter (4)
+\end{verbatim}
+
+\subsection*{ml-lattice-rs: Criptografía post-cuántica}
+
+\begin{verbatim}
+ml-lattice-rs/
+├── dilithium/src/lib.rs   ML-DSA: keygen/sign/verify
+│                          (MlDsa44, MlDsa65, MlDsa87)
+└── kyber/src/lib.rs       ML-KEM: keygen/encapsulate/decapsulate
+                           (MlKem512, MlKem768, MlKem1024)
+\end{verbatim}
+
+\subsection*{URLs de los repositorios}
+
+\begin{itemize}
+  \item \texttt{https://github.com/0xGeN02/PostQuantumEVM} --- Repositorio raíz
+  \item \texttt{https://github.com/0xGeN02/pq-reth} --- Fork de reth
+  \item \texttt{https://github.com/0xGeN02/ml-lattice-rs} --- Biblioteca criptográfica
+\end{itemize}

@@ -1,9 +1,622 @@
 \chapter{MARCO TEÓRICO}
 
-Descripción del marco teórico, conceptos clave y revisión bibliográfica de los temas vinculados al TFG. Incorpore un ítem por cada tema vinculado.
+Este capítulo presenta los fundamentos matemáticos y tecnológicos sobre los que se construye el trabajo. Se parte de la criptografía de curva elíptica (la primitiva que se pretende reemplazar), se introducen los modelos de computación cuántica y los algoritmos que la amenazan, se formalizan los problemas de retículos que fundamentan la alternativa post-cuántica, y se describe la infraestructura de Ethereum que es objeto de modificación.
 
-\section{Tema vinculado 1}
+%% ═══════════════════════════════════════════════════════════
+\section{Criptografía de curva elíptica y ECDSA}
+\label{sec:ecdsa}
+%% ═══════════════════════════════════════════════════════════
 
-\section{Tema vinculado 2}
+\begin{definicion}[Curva elíptica sobre $\mathbb{F}_p$]
+Sea $p > 3$ un primo. Una \emph{curva elíptica} $E$ sobre el cuerpo finito $\mathbb{F}_p$ es el conjunto de puntos $(x, y) \in \mathbb{F}_p \times \mathbb{F}_p$ que satisfacen la ecuación de Weierstrass corta
+\begin{equation}
+  E: \quad y^2 = x^3 + ax + b \pmod{p}, \qquad 4a^3 + 27b^2 \not\equiv 0 \pmod{p},
+  \label{eq:curva_eliptica}
+\end{equation}
+junto con un punto distinguido $\mathcal{O}$ (el \emph{punto en el infinito}) que actúa como elemento neutro.
+\end{definicion}
 
-\section{Tema vinculado 3}
+El conjunto $E(\mathbb{F}_p) = \{(x,y) \in \mathbb{F}_p^2 : y^2 = x^3 + ax + b\} \cup \{\mathcal{O}\}$ forma un grupo abeliano bajo la operación de adición de puntos, definida geométricamente como la intersección de la recta que pasa por dos puntos con la curva, reflejada respecto al eje $x$.
+
+\begin{definicion}[Suma de puntos]
+Dados $P = (x_1, y_1)$ y $Q = (x_2, y_2)$ en $E(\mathbb{F}_p)$ con $P \neq -Q$:
+\begin{equation}
+  P + Q = (x_3, y_3), \quad \text{donde} \quad
+  \begin{cases}
+    \lambda = \dfrac{y_2 - y_1}{x_2 - x_1} \pmod{p} & \text{si } P \neq Q, \\[8pt]
+    \lambda = \dfrac{3x_1^2 + a}{2y_1} \pmod{p} & \text{si } P = Q,
+  \end{cases}
+  \label{eq:suma_puntos}
+\end{equation}
+con $x_3 = \lambda^2 - x_1 - x_2 \pmod{p}$ e $y_3 = \lambda(x_1 - x_3) - y_1 \pmod{p}$.
+\end{definicion}
+
+\subsection{La curva secp256k1}
+
+Ethereum emplea la curva secp256k1, definida por los parámetros:
+\begin{align}
+  a &= 0, \quad b = 7, \label{eq:secp256k1_params} \\
+  p &= 2^{256} - 2^{32} - 977, \notag \\
+  n &= \text{FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141}_{16}, \notag
+\end{align}
+donde $n$ es el orden del subgrupo generado por el punto base $G$. La seguridad de secp256k1 descansa en la intratabilidad del siguiente problema:
+
+\begin{definicion}[Problema del Logaritmo Discreto en Curvas Elípticas (ECDLP)]
+\label{def:ecdlp}
+Dado un punto $Q = k \cdot G$ en $E(\mathbb{F}_p)$, donde $G$ es un generador conocido y $k \in \{1, \ldots, n-1\}$ es un escalar secreto, el ECDLP consiste en recuperar $k$ a partir de $Q$ y $G$.
+\end{definicion}
+
+Los mejores algoritmos clásicos para el ECDLP (Pollard's $\rho$, baby-step giant-step) tienen complejidad $O(\sqrt{n}) \approx O(2^{128})$ para secp256k1.
+
+\subsection{Esquema de firma ECDSA}
+
+El esquema ECDSA consta de tres algoritmos:
+
+\begin{enumerate}
+  \item \textbf{Generación de claves}: Elegir $k \xleftarrow{\$} \{1, \ldots, n-1\}$. Calcular $Q = k \cdot G$. La clave privada es $k$, la pública es $Q$.
+  
+  \item \textbf{Firma} $\textsf{Sign}(k, m)$: Dado un mensaje $m$:
+  \begin{enumerate}[label=\alph*.]
+    \item Calcular $e = \textsf{hash}(m)$ (en Ethereum, $\textsf{hash} = \texttt{keccak256}$).
+    \item Elegir $r_\text{nonce} \xleftarrow{\$} \{1, \ldots, n-1\}$.
+    \item Calcular $(x_1, y_1) = r_\text{nonce} \cdot G$.
+    \item Calcular $r = x_1 \bmod n$. Si $r = 0$, volver al paso b.
+    \item Calcular $s = r_\text{nonce}^{-1}(e + k \cdot r) \bmod n$. Si $s = 0$, volver al paso b.
+    \item La firma es $(r, s)$.
+  \end{enumerate}
+  
+  \item \textbf{Verificación} $\textsf{Verify}(Q, m, (r,s))$:
+  \begin{enumerate}[label=\alph*.]
+    \item Calcular $e = \textsf{hash}(m)$.
+    \item Calcular $u_1 = e \cdot s^{-1} \bmod n$ y $u_2 = r \cdot s^{-1} \bmod n$.
+    \item Calcular $(x_1, y_1) = u_1 \cdot G + u_2 \cdot Q$.
+    \item Aceptar si $r \equiv x_1 \pmod{n}$.
+  \end{enumerate}
+\end{enumerate}
+
+\subsection{Recuperación de clave pública (ecrecover)}
+
+Una propiedad singular de ECDSA ---explotada extensivamente por Ethereum--- es la \emph{recuperabilidad}: dada una firma $(v, r, s)$ y el hash del mensaje $e$, es posible reconstruir la clave pública $Q$ del firmante sin necesidad de transmitirla explícitamente. El byte $v$ (llamado \emph{recovery id}) indica cuál de las (hasta cuatro) posibles claves públicas es la correcta. Esta operación se implementa como el precompilado \texttt{ecrecover} en la dirección \texttt{0x01} de la EVM.
+
+La dirección Ethereum se deriva entonces como:
+\begin{equation}
+  \texttt{address} = \texttt{keccak256}(\mathit{pk}_x \| \mathit{pk}_y)[12{:}32],
+  \label{eq:eth_address}
+\end{equation}
+donde $\mathit{pk}_x$ y $\mathit{pk}_y$ son las coordenadas de 32 bytes del punto $Q$, resultando en una dirección de 20 bytes (los últimos 20 del hash de 32 bytes).
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Computación cuántica}
+\label{sec:quantum}
+%% ═══════════════════════════════════════════════════════════
+
+\subsection{Modelo de circuito cuántico}
+
+\begin{definicion}[Qubit]
+Un \emph{qubit} es un sistema cuántico de dos niveles cuyo estado se describe como un vector unitario en $\mathbb{C}^2$:
+\begin{equation}
+  \ket{\psi} = \alpha\ket{0} + \beta\ket{1}, \quad |\alpha|^2 + |\beta|^2 = 1,
+  \label{eq:qubit}
+\end{equation}
+donde $\ket{0} = \begin{psmallmatrix} 1 \\ 0 \end{psmallmatrix}$ y $\ket{1} = \begin{psmallmatrix} 0 \\ 1 \end{psmallmatrix}$ forman la base computacional.
+\end{definicion}
+
+Un sistema de $n$ qubits vive en el espacio de Hilbert $\mathcal{H} = (\mathbb{C}^2)^{\otimes n}$ de dimensión $2^n$. Las operaciones se representan como matrices unitarias (\emph{puertas cuánticas}):
+
+\begin{itemize}
+  \item \textbf{Puerta Hadamard}: $H = \frac{1}{\sqrt{2}} \begin{psmallmatrix} 1 & 1 \\ 1 & -1 \end{psmallmatrix}$, crea superposición: $H\ket{0} = \frac{1}{\sqrt{2}}(\ket{0} + \ket{1})$.
+  
+  \item \textbf{Puerta CNOT}: $\text{CNOT} = \begin{psmallmatrix} 1&0&0&0 \\ 0&1&0&0 \\ 0&0&0&1 \\ 0&0&1&0 \end{psmallmatrix}$, crea entrelazamiento.
+  
+  \item \textbf{Puerta de fase}: $R_k = \begin{psmallmatrix} 1 & 0 \\ 0 & e^{2\pi i / 2^k} \end{psmallmatrix}$, introduce fases relativas.
+\end{itemize}
+
+Al medir un qubit en estado $\ket{\psi} = \alpha\ket{0} + \beta\ket{1}$, se obtiene $\ket{0}$ con probabilidad $|\alpha|^2$ y $\ket{1}$ con probabilidad $|\beta|^2$, colapsando el estado.
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Algoritmo de Shor}
+\label{sec:shor}
+%% ═══════════════════════════════════════════════════════════
+
+El algoritmo de Shor \parencite{shor1994algorithms} resuelve el problema de la factorización de enteros y el del logaritmo discreto en tiempo polinómico en un computador cuántico. Su aplicación al ECDLP es la amenaza directa a secp256k1.
+
+\subsection{Estructura del algoritmo}
+
+Para resolver el ECDLP ($Q = k \cdot G$), el algoritmo procede en dos fases:
+
+\textbf{Fase cuántica:} Se prepara un estado de superposición uniforme sobre pares $(a, b)$ y se evalúa la función $f(a, b) = a \cdot G + b \cdot Q$ de forma coherente. Tras medir el registro de salida, el registro de entrada colapsa a un \emph{estado de coset}:
+\begin{equation}
+  \ket{\psi} = \frac{1}{\sqrt{n}} \sum_{j=0}^{n-1} \ket{(a_0 + j) \bmod n} \ket{(b_0 - jk) \bmod n},
+  \label{eq:coset_state}
+\end{equation}
+donde $(a_0, b_0)$ es un par que satisface $a_0 \cdot G + b_0 \cdot Q = P_0$ para algún punto fijo $P_0$. La clave privada $k$ está <<codificada>> en la relación entre los incrementos de ambos registros.
+
+\textbf{Transformada cuántica de Fourier (QFT):} Se aplica la QFT bidimensional sobre el grupo $\mathbb{Z}_n \times \mathbb{Z}_n$:
+\begin{equation}
+  \text{QFT}_N \ket{j} = \frac{1}{\sqrt{N}} \sum_{l=0}^{N-1} e^{2\pi i \, jl / N} \ket{l}.
+  \label{eq:qft}
+\end{equation}
+
+Tras la QFT, la medición produce un par $(s, t)$ donde, con alta probabilidad:
+\begin{equation}
+  s + t \cdot k \equiv 0 \pmod{n}.
+  \label{eq:shor_relation}
+\end{equation}
+
+\textbf{Post-procesamiento clásico:} Si $\gcd(t, n) = 1$, se recupera directamente:
+\begin{equation}
+  k = -s \cdot t^{-1} \bmod n.
+  \label{eq:key_recovery}
+\end{equation}
+Con múltiples mediciones, la probabilidad de éxito se amplifica arbitrariamente.
+
+\subsection{Complejidad y recursos}
+
+El algoritmo de Shor tiene complejidad $O((\log n)^3)$ en operaciones cuánticas, frente a la complejidad subexponencial $O(\exp(n^{1/3}))$ de los mejores algoritmos clásicos para el logaritmo discreto.
+
+Para secp256k1 ($n \approx 2^{256}$), las estimaciones más recientes \parencite{choosingcoordinates2025} indican que se necesitarían aproximadamente 2.330 qubits lógicos (sin contar la corrección de errores). Con técnicas de corrección de errores cuánticos, esto se traduce en millones de qubits físicos ---un recurso que no está disponible hoy pero que podría estarlo en 10-15 años según las proyecciones actuales.
+
+\subsection{Simulación sobre curva reducida}
+
+En este trabajo se simula el algoritmo de Shor sobre una curva elíptica reducida ($y^2 = x^3 + 7 \pmod{17}$, generador $G = (12, 1)$, orden $n = 18$), suficiente para demostrar la viabilidad del ataque sin requerir un computador cuántico real. La simulación utiliza Qiskit Aer con una DFT modular exacta bidimensional (ver Capítulo \ref{cap:desarrollo}).
+
+La Figura~\ref{fig:shor_circuit} muestra la estructura del circuito cuántico para el algoritmo de Shor aplicado al ECDLP.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  gate/.style={draw, minimum width=1.4cm, minimum height=0.7cm, fill=blue!10, font=\small},
+  meas/.style={draw, minimum width=0.8cm, minimum height=0.7cm, fill=gray!20, font=\small},
+  wire/.style={thick},
+  >=Stealth
+]
+
+% Qubit lines
+\foreach \y/\lbl in {0/$\ket{0}^{\otimes m}$ reg.\ $a$, -1.2/$\ket{0}^{\otimes m}$ reg.\ $b$, -2.4/$\ket{0}^{\otimes m}$ reg.\ salida} {
+  \node[anchor=east, font=\small] at (-0.3, \y) {\lbl};
+  \draw[wire] (0, \y) -- (11.5, \y);
+}
+
+% H gates
+\node[gate, fill=green!15] (h1) at (1, 0) {$H^{\otimes m}$};
+\node[gate, fill=green!15] (h2) at (1, -1.2) {$H^{\otimes m}$};
+
+% Oracle Uf
+\node[gate, fill=orange!20, minimum height=2.8cm, minimum width=1.8cm] (uf) at (3.5, -1.2) {$U_f$: $aG + bQ$};
+
+% Measurement of output register
+\node[meas] (m0) at (5.5, -2.4) {Medir};
+
+% QFT
+\node[gate, fill=purple!15, minimum height=0.7cm] (qft1) at (7.2, 0) {$\text{QFT}_n$};
+\node[gate, fill=purple!15, minimum height=0.7cm] (qft2) at (7.2, -1.2) {$\text{QFT}_n$};
+
+% Final measurement
+\node[meas] (m1) at (9.2, 0) {Medir $s$};
+\node[meas] (m2) at (9.2, -1.2) {Medir $t$};
+
+% Post-processing
+\node[draw, dashed, rounded corners, fill=yellow!10, minimum width=1.8cm, minimum height=1.2cm, font=\small, align=center] (post) at (10.8, -0.6) {$k = -st^{-1}$\\$\bmod n$};
+
+% Arrows from measurements to post-processing
+\draw[->, thick, dashed] (m1.east) -- (post.north west);
+\draw[->, thick, dashed] (m2.east) -- (post.south west);
+
+\end{tikzpicture}
+\caption{Circuito cuántico del algoritmo de Shor para ECDLP. El oráculo $U_f$ evalúa $f(a,b) = aG + bQ$ de forma coherente. Tras la medición del registro de salida y la QFT, los resultados $(s,t)$ permiten recuperar $k$.}
+\label{fig:shor_circuit}
+\end{figure}
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Algoritmo de Grover}
+\label{sec:grover}
+%% ═══════════════════════════════════════════════════════════
+
+El algoritmo de Grover \parencite{grover1996fast} proporciona una aceleración cuadrática para la búsqueda no estructurada: dado un oráculo $f: \{0,1\}^n \to \{0,1\}$ con $M$ soluciones entre $N = 2^n$ entradas, encuentra una solución en $O(\sqrt{N/M})$ consultas.
+
+\subsection{Estructura del algoritmo}
+
+\begin{enumerate}
+  \item \textbf{Inicialización}: Preparar la superposición uniforme
+  \begin{equation}
+    \ket{s} = H^{\otimes n}\ket{0}^{\otimes n} = \frac{1}{\sqrt{N}} \sum_{x=0}^{N-1} \ket{x}.
+    \label{eq:grover_init}
+  \end{equation}
+  
+  \item \textbf{Iteración de Grover}: Repetir $k_{\text{opt}} = \left\lfloor \frac{\pi}{4}\sqrt{N/M} \right\rfloor$ veces:
+  \begin{enumerate}[label=\alph*.]
+    \item \textbf{Oráculo de fase} $O_f$: Invierte la fase de las soluciones:
+    \begin{equation}
+      O_f\ket{x} = (-1)^{f(x)}\ket{x}.
+      \label{eq:oracle}
+    \end{equation}
+    
+    \item \textbf{Operador de difusión} $D = 2\ket{s}\bra{s} - I$: Inversión respecto a la media. Amplifica la amplitud de los estados marcados.
+  \end{enumerate}
+  
+  \item \textbf{Medición}: La probabilidad de medir una solución tras $k$ iteraciones es:
+  \begin{equation}
+    P_{\text{éxito}}(k) = \sin^2\left((2k+1)\theta\right), \quad \text{donde } \sin\theta = \sqrt{M/N}.
+    \label{eq:grover_prob}
+  \end{equation}
+\end{enumerate}
+
+\subsection{Implicaciones para funciones hash}
+
+Aplicado a la búsqueda de preimágenes, Grover reduce la seguridad efectiva de una función hash de $2^n$ a $2^{n/2}$. Para Keccak-256 (empleada en Ethereum como \texttt{keccak256}), esto significa:
+\begin{itemize}
+  \item Seguridad pre-imagen clásica: $2^{256}$ operaciones.
+  \item Seguridad pre-imagen cuántica: $2^{128}$ operaciones (todavía considerado seguro).
+\end{itemize}
+
+Esto justifica que las funciones hash de 256 bits mantengan un nivel de seguridad aceptable frente a ataques cuánticos, a diferencia de los esquemas basados en el logaritmo discreto. No obstante, SHAKE-256 ofrece ventajas adicionales de consistencia con ML-DSA que se detallan en la Sección \ref{sec:shake256}.
+
+La Figura~\ref{fig:grover_circuit} muestra la estructura del circuito de Grover para búsqueda de preimágenes.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  gate/.style={draw, minimum width=1.2cm, minimum height=0.6cm, font=\small},
+  brace/.style={decorate, decoration={brace, amplitude=6pt, mirror}},
+  wire/.style={thick},
+  >=Stealth
+]
+
+% Qubit lines
+\foreach \y in {0, -0.8, -1.6, -2.4} {
+  \draw[wire] (0, \y) -- (10.5, \y);
+}
+\node[anchor=east, font=\small] at (-0.2, 0) {$\ket{0}$};
+\node[anchor=east, font=\small] at (-0.2, -0.8) {$\ket{0}$};
+\node[anchor=east, font=\small] at (-0.2, -1.6) {$\ket{0}$};
+\node[anchor=east, font=\small] at (-0.2, -2.4) {$\ket{0}$};
+
+% H gates
+\foreach \y in {0, -0.8, -1.6, -2.4} {
+  \node[gate, fill=green!15] at (0.8, \y) {$H$};
+}
+
+% First iteration
+\node[gate, fill=red!15, minimum height=3.6cm] (o1) at (2.8, -1.2) {$O_f$};
+\node[gate, fill=blue!15, minimum height=3.6cm] (d1) at (4.5, -1.2) {$D$};
+
+% Second iteration (k_opt iterations)
+\node[gate, fill=red!15, minimum height=3.6cm] (o2) at (6.2, -1.2) {$O_f$};
+\node[gate, fill=blue!15, minimum height=3.6cm] (d2) at (7.9, -1.2) {$D$};
+
+% Dots
+\node[font=\Large] at (5.35, -1.2) {$\cdots$};
+
+% Measurement
+\foreach \y in {0, -0.8, -1.6, -2.4} {
+  \node[gate, fill=gray!20] at (9.6, \y) {\small Medir};
+}
+
+% Brace for iterations
+\draw[brace] (2.1, -3.3) -- (8.5, -3.3) node[midway, below=8pt, font=\small] {$k_{\text{opt}} = \lfloor \frac{\pi}{4}\sqrt{N/M} \rfloor$ iteraciones};
+
+% Labels
+\node[font=\footnotesize, align=center] at (2.8, -3.9) {oráculo};
+\node[font=\footnotesize, align=center] at (4.5, -3.9) {difusión};
+
+\end{tikzpicture}
+\caption{Circuito de Grover para $n=4$ qubits. Cada iteración aplica el oráculo de fase $O_f$ (invierte la fase de las soluciones) y el operador de difusión $D = 2\ket{s}\bra{s} - I$ (amplifica la amplitud de los estados marcados).}
+\label{fig:grover_circuit}
+\end{figure}
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Criptografía basada en retículos}
+\label{sec:lattices}
+%% ═══════════════════════════════════════════════════════════
+
+\begin{definicion}[Retículo]
+Un \emph{retículo} $\mathcal{L}$ en $\mathbb{R}^n$ es un subgrupo discreto de $\mathbb{R}^n$ generado por una base $\mathbf{B} = \{\mathbf{b}_1, \ldots, \mathbf{b}_n\} \subset \mathbb{R}^n$ de vectores linealmente independientes:
+\begin{equation}
+  \mathcal{L}(\mathbf{B}) = \left\{ \sum_{i=1}^{n} z_i \mathbf{b}_i : z_i \in \mathbb{Z} \right\}.
+  \label{eq:lattice}
+\end{equation}
+\end{definicion}
+
+\subsection{Problemas computacionales duros}
+
+\begin{definicion}[Problema del Vector más Corto (SVP)]
+Dado un retículo $\mathcal{L}(\mathbf{B})$, encontrar un vector no nulo $\mathbf{v} \in \mathcal{L}$ tal que $\|\mathbf{v}\| = \lambda_1(\mathcal{L})$, donde $\lambda_1(\mathcal{L}) = \min_{\mathbf{v} \in \mathcal{L} \setminus \{0\}} \|\mathbf{v}\|$ es la longitud mínima del retículo.
+\end{definicion}
+
+\begin{definicion}[Problema del Vector más Cercano (CVP)]
+Dado un retículo $\mathcal{L}(\mathbf{B})$ y un punto objetivo $\mathbf{t} \in \mathbb{R}^n$, encontrar $\mathbf{v} \in \mathcal{L}$ que minimice $\|\mathbf{v} - \mathbf{t}\|$.
+\end{definicion}
+
+Los problemas SVP y CVP son NP-hard en su versión exacta. Incluso sus versiones aproximadas (con factores de aproximación polinómicos) se conjeturan difíciles tanto para computadoras clásicas como cuánticas, lo que constituye la base de seguridad de la criptografía basada en retículos.
+
+\subsection{Learning With Errors (LWE)}
+
+\begin{definicion}[Problema LWE \parencite{regev2005lwe}]
+\label{def:lwe}
+Sean $n, q \in \mathbb{N}$ con $q$ primo, y sea $\chi$ una distribución de error sobre $\mathbb{Z}_q$ (típicamente una distribución gaussiana discreta con parámetro $\sigma$). Dado un secreto $\mathbf{s} \xleftarrow{\$} \mathbb{Z}_q^n$, el problema LWE consiste en distinguir entre:
+\begin{itemize}
+  \item Muestras de la forma $(\mathbf{a}_i, b_i = \langle \mathbf{a}_i, \mathbf{s} \rangle + e_i \bmod q)$, donde $\mathbf{a}_i \xleftarrow{\$} \mathbb{Z}_q^n$ y $e_i \leftarrow \chi$.
+  \item Muestras uniformemente aleatorias $(\mathbf{a}_i, u_i)$ con $u_i \xleftarrow{\$} \mathbb{Z}_q$.
+\end{itemize}
+\end{definicion}
+
+\begin{teorema}[Regev, 2005]
+Para parámetros apropiados, resolver el problema Decision-LWE es al menos tan difícil como resolver el problema SVP aproximado en retículos de dimensión $n$ en el peor caso (\emph{worst-case}).
+\end{teorema}
+
+Esta reducción \emph{worst-case to average-case} es una propiedad extraordinaria: la seguridad de cualquier instancia aleatoria de LWE se fundamenta en la dureza del peor caso de un problema de retículos, proporcionando garantías de seguridad mucho más fuertes que las de los esquemas basados en factorización o logaritmo discreto.
+
+\subsection{Module-LWE}
+
+\begin{definicion}[Module-LWE]
+Sea $R_q = \mathbb{Z}_q[X]/(X^n + 1)$ un anillo de polinomios cociente, con $n$ potencia de 2. El problema Module-LWE opera sobre el módulo $R_q^k$ para un rango $k$: dado $\mathbf{A} \xleftarrow{\$} R_q^{k \times k}$ y $\mathbf{s} \xleftarrow{\$} R_q^k$, distinguir $(\mathbf{A}, \mathbf{A}\mathbf{s} + \mathbf{e})$ de $(\mathbf{A}, \mathbf{u})$ para $\mathbf{e} \leftarrow \chi^k$ y $\mathbf{u} \xleftarrow{\$} R_q^k$.
+\end{definicion}
+
+Module-LWE generaliza tanto LWE (caso $n = 1$) como Ring-LWE (caso $k = 1$), ofreciendo un equilibrio entre seguridad y eficiencia. ML-DSA y ML-KEM se basan en Module-LWE.
+
+\subsection{Justificación de la elección de retículos}
+
+Entre las familias de criptografía post-cuántica estandarizadas por NIST, se eligieron los retículos (ML-DSA) frente a las alternativas por las siguientes razones:
+
+\begin{table}[htbp]
+\centering
+\caption{Comparativa de familias PQC para firmas digitales.}
+\label{tab:pqc_families}
+\begin{tabular}{@{}lcccp{4.5cm}@{}}
+\toprule
+\textbf{Familia} & \textbf{|pk| (B)} & \textbf{|sig| (B)} & \textbf{Verify ($\mu$s)} & \textbf{Observaciones} \\
+\midrule
+ML-DSA-65 (retículos) & 1.952 & 3.309 & $\sim$42 & FIPS-204. Mejor relación tamaño/rendimiento. \\
+Falcon-512 (NTRU) & 897 & 666 & $\sim$10 & Firmas más pequeñas, pero requiere sampling con punto flotante; mayor complejidad de implementación. \\
+SLH-DSA-128s (hash) & 32 & 7.856 & $\sim$500 & Claves pequeñas pero firmas enormes y verificación lenta. Sin asunción lattice. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Falcon fue descartado pese a sus firmas más compactas porque su implementación segura contra ataques de canal lateral requiere aritmética de punto flotante constante-tiempo, una complejidad significativa para un sistema embebido en un cliente blockchain. SLH-DSA fue descartado por el tamaño de firma ($>$7 KB) y el tiempo de verificación ($>$500 $\mu$s), incompatibles con la latencia requerida en la validación de bloques.
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{ML-DSA (FIPS-204)}
+\label{sec:mldsa}
+%% ═══════════════════════════════════════════════════════════
+
+ML-DSA (\emph{Module Lattice-Based Digital Signature Algorithm}), estandarizado como FIPS-204 \parencite{nistfips204}, es el sucesor del candidato CRYSTALS-Dilithium. Opera sobre el anillo $R_q = \mathbb{Z}_q[X]/(X^{256} + 1)$ con $q = 8.380.417$.
+
+\subsection{Generación de claves}
+
+\begin{enumerate}
+  \item Generar una semilla aleatoria $\xi \xleftarrow{\$} \{0,1\}^{256}$.
+  \item Expandir $\xi$ con SHAKE-256 para obtener la matriz $\mathbf{A} \in R_q^{k \times l}$ y los vectores secretos $\mathbf{s}_1 \in R_q^l$, $\mathbf{s}_2 \in R_q^k$ con coeficientes pequeños ($\|\mathbf{s}_i\|_\infty \leq \eta$).
+  \item Calcular $\mathbf{t} = \mathbf{A}\mathbf{s}_1 + \mathbf{s}_2 \in R_q^k$.
+  \item La clave pública es $(\mathbf{A}, \mathbf{t})$; la clave privada es $(\mathbf{A}, \mathbf{s}_1, \mathbf{s}_2, \mathbf{t})$.
+\end{enumerate}
+
+Para ML-DSA-65: $k = 6$, $l = 5$, $\eta = 4$, resultando en una clave pública de 1.952 bytes.
+
+\subsection{Firma}
+
+\begin{enumerate}
+  \item Calcular el hash del mensaje: $\mu = \text{SHAKE-256}(\mathit{pk} \| m)$.
+  \item Muestrear un vector de enmascaramiento $\mathbf{y} \leftarrow S_{\gamma_1}^l$ (coeficientes en $[-\gamma_1 + 1, \gamma_1]$).
+  \item Calcular $\mathbf{w} = \mathbf{A}\mathbf{y}$ y extraer los bits altos: $\mathbf{w}_1 = \textsf{HighBits}(\mathbf{w})$.
+  \item Calcular el desafío: $c = H(\mu \| \mathbf{w}_1) \in R_q$ con exactamente $\tau$ coeficientes no nulos.
+  \item Calcular la respuesta: $\mathbf{z} = \mathbf{y} + c\mathbf{s}_1$.
+  \item \textbf{Rejection sampling}: Si $\|\mathbf{z}\|_\infty \geq \gamma_1 - \beta$ o la verificación de los bits bajos falla, volver al paso 2.
+  \item La firma es $(\mathbf{z}, h, c)$, donde $h$ es un \emph{hint} para la descompresión.
+\end{enumerate}
+
+El \emph{rejection sampling} es crucial: garantiza que la distribución de $\mathbf{z}$ sea independiente de los secretos $\mathbf{s}_1$, $\mathbf{s}_2$, evitando la fuga de información. La firma es \textbf{determinista} (no depende de un nonce aleatorio), eliminando la maleabilidad.
+
+\subsection{Verificación}
+
+\begin{enumerate}
+  \item Recalcular $\mu = \text{SHAKE-256}(\mathit{pk} \| m)$.
+  \item Calcular $\mathbf{w}' = \mathbf{A}\mathbf{z} - c\mathbf{t}$ y extraer: $\mathbf{w}_1' = \textsf{UseHint}(h, \mathbf{w}')$.
+  \item Verificar: $c \stackrel{?}{=} H(\mu \| \mathbf{w}_1')$ y $\|\mathbf{z}\|_\infty < \gamma_1 - \beta$.
+\end{enumerate}
+
+\subsection{Niveles de seguridad}
+
+\begin{table}[htbp]
+\centering
+\caption{Parámetros y tamaños de ML-DSA por nivel de seguridad.}
+\label{tab:mldsa_params}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\textbf{Variante} & \textbf{NIST} & $(k, l)$ & \textbf{|pk| (B)} & \textbf{|sig| (B)} & \textbf{Sign ($\mu$s)} & \textbf{Verify ($\mu$s)} \\
+\midrule
+ML-DSA-44 & II & (4, 4) & 1.312 & 2.420 & $\sim$30 & $\sim$30 \\
+\textbf{ML-DSA-65} & \textbf{III} & \textbf{(6, 5)} & \textbf{1.952} & \textbf{3.309} & $\bm{\sim}$\textbf{50} & $\bm{\sim}$\textbf{42} \\
+ML-DSA-87 & V & (8, 7) & 2.592 & 4.627 & $\sim$80 & $\sim$62 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Se eligió ML-DSA-65 (nivel III, seguridad clásica de 192 bits, cuántica de 128 bits) por ofrecer un margen conservador sin el sobrecoste del nivel V. El nivel II (ML-DSA-44) proporciona solo 128 bits de seguridad clásica, por debajo del margen actual de secp256k1.
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Ethereum y la Máquina Virtual de Ethereum (EVM)}
+\label{sec:ethereum}
+%% ═══════════════════════════════════════════════════════════
+
+\subsection{Arquitectura de capas}
+
+Desde \emph{The Merge} (septiembre de 2022), Ethereum opera con una arquitectura de dos capas:
+
+\begin{itemize}
+  \item \textbf{Capa de ejecución (EL)}: Procesa transacciones, ejecuta contratos inteligentes, mantiene el estado de cuentas y contratos. Implementada por clientes como geth, Nethermind, Besu, Erigon y reth.
+  
+  \item \textbf{Capa de consenso (CL)}: Coordina los validadores Proof of Stake, gestiona las atestaciones y propuestas de bloques. Utiliza firmas BLS12-381.
+\end{itemize}
+
+Este trabajo modifica exclusivamente la capa de ejecución, dejando la capa de consenso como trabajo futuro (ver Sección \ref{sec:futuro}).
+
+\subsection{Transacciones tipadas (EIP-2718)}
+
+EIP-2718 \parencite{eip2718} define un formato de sobre (\emph{envelope}) para transacciones:
+\begin{equation}
+  \texttt{TransactionType} \| \texttt{TransactionPayload},
+  \label{eq:eip2718}
+\end{equation}
+donde \texttt{TransactionType} es un byte en el rango $[\texttt{0x00}, \texttt{0x7f}]$ y \texttt{TransactionPayload} es un array de bytes cuya codificación depende del tipo. Los tipos asignados actualmente son:
+
+\begin{table}[htbp]
+\centering
+\caption{Tipos de transacción Ethereum asignados (mayo 2026).}
+\label{tab:tx_types}
+\begin{tabular}{@{}cll@{}}
+\toprule
+\textbf{Tipo} & \textbf{EIP} & \textbf{Descripción} \\
+\midrule
+\texttt{0x00} & Legacy & Transacciones pre-EIP-2718 \\
+\texttt{0x01} & EIP-2930 & Access list \\
+\texttt{0x02} & EIP-1559 & Comisiones dinámicas (base fee + priority fee) \\
+\texttt{0x03} & EIP-4844 & Blob transactions (proto-danksharding) \\
+\texttt{0x04} & EIP-7702 & Delegación de código para EOAs \\
+\texttt{0x50} & \textbf{Este trabajo} & \textbf{Transacción post-cuántica ML-DSA-65} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Precompilados}
+
+Los precompilados son contratos con direcciones fijas cuya lógica está implementada de forma nativa en el cliente de ejecución (no en bytecode EVM), proporcionando operaciones criptográficas eficientes. Los precompilados relevantes para este trabajo son:
+
+\begin{itemize}
+  \item \texttt{0x01} (\texttt{ecrecover}): Recuperación de clave pública ECDSA. \textbf{Vulnerable} a Shor.
+  \item \texttt{0x02} (\texttt{SHA-256}), \texttt{0x03} (\texttt{RIPEMD-160}), \texttt{0x09} (\texttt{Blake2f}): Funciones hash. Seguras frente a ataques cuánticos (Grover solo reduce la seguridad a la mitad).
+  \item \texttt{0x06}--\texttt{0x08} (BN254): Aritmética de curva para verificación zk-SNARK. \textbf{Vulnerable}.
+  \item \texttt{0x0a} (KZG): Evaluación de puntos para EIP-4844. \textbf{Vulnerable}.
+  \item \texttt{0x0b}--\texttt{0x13} (BLS12-381): Nueve operaciones para firmas BLS. \textbf{Vulnerable}.
+\end{itemize}
+
+\subsection{Modelo de comisiones EIP-1559}
+
+Desde la actualización London (agosto 2021), Ethereum emplea un modelo de comisiones con una \emph{base fee} (ajustada algorítmicamente por bloque y quemada) y una \emph{priority fee} (propina al validador). Este modelo se preserva a nivel de protocolo en la implementación de este trabajo, aunque el tipo de transacción \texttt{0x50} utiliza un campo \texttt{gas\_price} simplificado por razones de alcance (ver Sección \ref{sec:decisiones_descartadas}).
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{Reth como cliente de ejecución}
+\label{sec:reth}
+%% ═══════════════════════════════════════════════════════════
+
+Reth \parencite{reth2024} es un cliente de ejecución Ethereum implementado en Rust por Paradigm. Se eligió como base para este trabajo por tres razones fundamentales:
+
+\begin{enumerate}
+  \item \textbf{Seguridad de memoria}: Rust garantiza ausencia de \emph{data races} y errores de acceso a memoria en tiempo de compilación, una propiedad crítica para software criptográfico.
+  
+  \item \textbf{Modularidad}: Reth está organizado en más de 100 \emph{crates} independientes con interfaces definidas por \emph{traits}. Los componentes clave para este trabajo son:
+  \begin{itemize}
+    \item \texttt{Primitives}: Tipos de transacción, bloque, header.
+    \item \texttt{Consensus}: Validación de bloques y transacciones.
+    \item \texttt{Network}: Descubrimiento de pares y propagación de bloques.
+    \item \texttt{EVM}: Ejecución de transacciones y gestión de precompilados.
+    \item \texttt{Pool}: Mempool de transacciones pendientes.
+  \end{itemize}
+  Cada uno de estos componentes se extiende con un \emph{crate} PQ correspondiente (ver Capítulo \ref{cap:desarrollo}).
+  
+  \item \textbf{Rendimiento}: Reth utiliza paralelismo extensivo (rayon), I/O mapeado en memoria (MDBX), y un \emph{pipeline} de sincronización por etapas que aprovecha múltiples núcleos.
+\end{enumerate}
+
+
+%% ═══════════════════════════════════════════════════════════
+\section{SHAKE-256 y la familia SHA-3}
+\label{sec:shake256}
+%% ═══════════════════════════════════════════════════════════
+
+\subsection{Construcción esponja}
+
+La familia SHA-3 (Keccak) se basa en la construcción esponja (\emph{sponge construction}), que opera sobre un estado interno de $b = 1600$ bits organizado como una matriz de $5 \times 5 \times 64$ bits.
+
+\begin{definicion}[Construcción esponja]
+Una función esponja con permutación $f: \{0,1\}^b \to \{0,1\}^b$, tasa $r$ y capacidad $c$ (con $b = r + c$) opera en dos fases:
+\begin{enumerate}
+  \item \textbf{Absorción}: El mensaje $M$ se divide en bloques de $r$ bits. Cada bloque se XOR con los primeros $r$ bits del estado, seguido de una aplicación de $f$.
+  \item \textbf{Extracción (\emph{squeezing})}: Se extraen los primeros $r$ bits del estado. Si se necesitan más bits de salida, se aplica $f$ y se extraen otros $r$ bits, iterativamente.
+\end{enumerate}
+\end{definicion}
+
+La Figura~\ref{fig:sponge} ilustra la construcción esponja.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  block/.style={draw, minimum width=1.2cm, minimum height=1.8cm, font=\small, align=center},
+  xornode/.style={draw, circle, minimum size=0.5cm, font=\small, inner sep=0pt},
+  >=Stealth, thick
+]
+
+% State blocks
+\node[block, fill=blue!10] (s0) at (0, 0) {$0^b$};
+
+% Absorption phase
+\foreach \i/\x in {1/2.5, 2/5.0} {
+  \node[xornode] (xor\i) at (\x-0.7, 0.5) {$\oplus$};
+  \node[block, fill=orange!15] (f\i) at (\x, 0) {$f$};
+  \node[font=\small, above] at (\x-0.7, 1.2) {$m_{\i}$};
+  \draw[->] (\x-0.7, 1.1) -- (xor\i);
+}
+
+% Squeezing phase
+\node[block, fill=orange!15] (f3) at (7.5, 0) {$f$};
+\node[block, fill=orange!15] (f4) at (10.0, 0) {$f$};
+
+% Connections for absorption
+\draw[->] (s0.east) -- ++(0.3,0) |- (xor1.west);
+\draw[->] (xor1.east) -- (f1.west |- xor1);
+\draw[->] (f1.east) -- ++(0.3,0) |- (xor2.west);
+\draw[->] (xor2.east) -- (f2.west |- xor2);
+
+% Connection to squeezing
+\draw[->] (f2.east) -- (f3.west);
+\draw[->] (f3.east) -- (f4.west);
+
+% Output arrows
+\draw[->, thick, blue!60] (f2.east) ++(0.15, 0.5) -- ++(0, 0.8) node[above, font=\small] {$z_1$};
+\draw[->, thick, blue!60] (f3.east) ++(0.15, 0.5) -- ++(0, 0.8) node[above, font=\small] {$z_2$};
+\draw[->, thick, blue!60] (f4.east) ++(0.15, 0.5) -- ++(0, 0.8) node[above, font=\small] {$z_3$};
+
+% Rate/capacity labels
+\draw[decorate, decoration={brace, amplitude=4pt}] (-0.6, 0.9) -- (-0.6, 0.1) node[midway, left=5pt, font=\footnotesize] {$r$};
+\draw[decorate, decoration={brace, amplitude=4pt}] (-0.6, -0.1) -- (-0.6, -0.9) node[midway, left=5pt, font=\footnotesize] {$c$};
+
+% Phase labels
+\draw[decorate, decoration={brace, amplitude=6pt, mirror}] (0, -1.3) -- (5.6, -1.3) node[midway, below=6pt, font=\small] {Absorción};
+\draw[decorate, decoration={brace, amplitude=6pt, mirror}] (5.8, -1.3) -- (10.6, -1.3) node[midway, below=6pt, font=\small] {Extracción (\emph{squeezing})};
+
+% Dots
+\node[font=\large] at (6.3, 0) {$\cdots$};
+
+\end{tikzpicture}
+\caption{Construcción esponja: los bloques del mensaje $m_i$ se absorben mediante XOR con la tasa $r$ del estado seguido de la permutación $f$. En la fase de extracción, se extraen $r$ bits por aplicación de $f$. La capacidad $c$ nunca se expone directamente.}
+\label{fig:sponge}
+\end{figure}
+
+La permutación Keccak-$f[1600]$ consta de 24 rondas, cada una compuesta por cinco pasos: $\theta$ (paridad de columnas), $\rho$ (rotación de bits), $\pi$ (permutación de posiciones), $\chi$ (operación no lineal: $A_i \gets A_i \oplus (\neg A_{i+1} \wedge A_{i+2})$) e $\iota$ (adición de constante de ronda).
+
+\subsection{SHAKE-256 como XOF}
+
+SHAKE-256 es una \emph{Extendable Output Function} (XOF): a diferencia de SHA3-256 que produce exactamente 256 bits, SHAKE-256 puede producir una salida de longitud arbitraria. Emplea una capacidad $c = 512$ bits (tasa $r = 1088$ bits), proporcionando:
+\begin{itemize}
+  \item Seguridad de preimagen: $\min(d/2, 256)$ bits, donde $d$ es la longitud de salida.
+  \item Seguridad de colisión: $\min(d/2, 256)$ bits.
+\end{itemize}
+
+Para $d = 256$ bits (el caso de uso en este trabajo), la seguridad es de 128 bits tanto para preimagen como para colisión en el modelo clásico, y de 64/128 bits respectivamente con Grover ---suficiente para las necesidades actuales.
+
+\subsection{Justificación del uso de SHAKE-256}
+
+Se elige SHAKE-256 en lugar de Keccak-256 (empleada nativamente por Ethereum) por tres razones:
+\begin{enumerate}
+  \item \textbf{Consistencia criptográfica}: ML-DSA-65 utiliza internamente SHAKE-256 para la expansión de la matriz $\mathbf{A}$, el muestreo de vectores secretos y el cálculo del desafío. Emplear la misma primitiva para la derivación de direcciones simplifica la superficie de dependencias criptográficas.
+  
+  \item \textbf{Separación de dominios}: Al usar SHAKE-256 en lugar de Keccak-256, las direcciones post-cuánticas ($\text{SHAKE-256}(\mathit{pk})[12{:}32]$) pertenecen a un espacio de salida diferente al de las direcciones clásicas ($\text{Keccak-256}(\mathit{pk})[12{:}32]$), eliminando cualquier posibilidad de confusión o colisión intencionada.
+  
+  \item \textbf{Flexibilidad de salida}: La propiedad XOF permite adaptar la longitud de salida si futuros estándares requieren direcciones más largas, sin cambiar la primitiva subyacente.
+\end{enumerate}

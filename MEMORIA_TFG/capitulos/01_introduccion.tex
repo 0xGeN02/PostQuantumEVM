@@ -2,14 +2,134 @@
 
 \section{Motivación del trabajo}
 
+La seguridad de las redes blockchain públicas descansa sobre primitivas criptográficas cuya solidez se asume computacionalmente intratable para las computadoras clásicas. En particular, Ethereum ---la segunda red blockchain por capitalización de mercado, con un volumen diario de transacciones que supera los cien mil millones de dólares--- emplea el esquema de firma digital ECDSA (\emph{Elliptic Curve Digital Signature Algorithm}) sobre la curva secp256k1 para autenticar cada transacción enviada a la red \parencite{wood2014ethereum}.
+
+La seguridad de ECDSA se fundamenta en la dureza computacional del Problema del Logaritmo Discreto en Curvas Elípticas (ECDLP): dado un punto $Q = k \cdot G$ en la curva, donde $G$ es el generador y $k$ la clave privada, no existe un algoritmo clásico eficiente para recuperar $k$. Los mejores ataques clásicos (Pollard's rho, baby-step giant-step) requieren $O(\sqrt{n})$ operaciones, donde $n$ es el orden del grupo, lo que para secp256k1 ($n \approx 2^{256}$) implica aproximadamente $2^{128}$ operaciones: una barrera computacional infranqueable con la tecnología actual.
+
+Sin embargo, en 1994 Peter Shor demostró que un computador cuántico de escala suficiente puede resolver el ECDLP en tiempo polinómico $O(n^3)$ \parencite{shor1994algorithms}. Esto significa que la aparición de un computador cuántico criptográficamente relevante (CRQC, \emph{Cryptographically Relevant Quantum Computer}) reduciría la seguridad de secp256k1 de $2^{128}$ operaciones clásicas a un número polinómico de operaciones cuánticas, haciendo viable la falsificación de firmas digitales y, por extensión, el robo de fondos de cualquier cuenta cuya clave pública haya sido expuesta.
+
+Las estimaciones actuales sitúan la disponibilidad de un CRQC en un horizonte de 10 a 15 años \parencite{nistpqc2024}. Si bien este plazo puede parecer lejano, dos factores exigen una acción preventiva inmediata:
+
+\begin{enumerate}[label=\arabic*.]
+  \item \textbf{Amenaza <<harvest now, decrypt later>>}: Un adversario puede registrar hoy las transacciones firmadas que se propagan por la red ---incluyendo las claves públicas que se derivan durante la verificación--- y almacenarlas hasta que disponga de un CRQC capaz de recuperar las claves privadas correspondientes. Dado que la blockchain es un registro público e inmutable, todas las transacciones históricas están disponibles para este tipo de ataque \parencite{quantumresistance2023nature}.
+  
+  \item \textbf{Complejidad de la migración}: Ethereum es un sistema distribuido con cientos de miles de nodos, múltiples implementaciones de clientes (geth, Nethermind, Besu, Erigon, reth), y un ecosistema de contratos inteligentes valorado en miles de millones. Una migración criptográfica requiere coordinación a escala global y años de planificación, desarrollo, pruebas y despliegue progresivo.
+\end{enumerate}
+
+Estas consideraciones motivan el presente trabajo: demostrar la viabilidad técnica de migrar la capa de transacciones de Ethereum a criptografía post-cuántica basada en retículos, proporcionando una implementación funcional y una propuesta de estandarización.
+
+
 \section{Planteamiento del problema}
 
+El esquema ECDSA/secp256k1 no es un componente aislado de Ethereum, sino que está profundamente integrado en múltiples capas del protocolo. Se identifican cinco puntos de vulnerabilidad cuántica:
+
+\begin{enumerate}[label=\textbf{P\arabic*.}]
+  \item \textbf{Firma de transacciones}: Cada transacción incluye una firma ECDSA $(v, r, s)$ que autentica al remitente. Un CRQC podría falsificar firmas para cualquier cuenta cuya clave pública sea conocida.
+  
+  \item \textbf{Recuperación del remitente}: Ethereum no incluye la dirección del remitente en la transacción. En su lugar, la función \texttt{ecrecover} recupera la clave pública a partir de la firma $(v, r, s)$ y el hash del mensaje. Esta propiedad de <<recuperabilidad>> es exclusiva de ECDSA y no existe en los esquemas de firma post-cuánticos.
+  
+  \item \textbf{Derivación de direcciones}: Las direcciones Ethereum se derivan como $\texttt{keccak256}(\mathit{pk})[12{:}32]$, donde $\mathit{pk}$ es la clave pública no comprimida de 64 bytes (sin el prefijo \texttt{0x04}). Este esquema está acoplado al formato de clave secp256k1.
+  
+  \item \textbf{Precompilados criptográficos}: La EVM incluye precompilados para operaciones sobre curvas elípticas (BN254: \texttt{0x06}--\texttt{0x08}; BLS12-381: \texttt{0x0b}--\texttt{0x13}) y evaluación de puntos KZG (\texttt{0x0a}). Todas estas primitivas se basan en el problema del logaritmo discreto o en emparejamientos bilineales, vulnerables al algoritmo de Shor.
+  
+  \item \textbf{Consenso (Proof of Stake)}: La capa de consenso de Ethereum utiliza firmas BLS12-381 para la atestación y propuesta de bloques por parte de los validadores. BLS12-381 es igualmente vulnerable a ataques cuánticos, aunque su migración es un problema separado que requiere agregación de firmas post-cuántica ---una capacidad que aún no existe de forma estandarizada.
+\end{enumerate}
+
+En el momento de redacción de este trabajo, no existe ninguna propuesta de estandarización (EIP) que defina un tipo de transacción nativo post-cuántico. Las propuestas existentes ---EIP-7932 \parencite{eip7932} (registro de algoritmos de firma secundarios) y EIP-8051 \parencite{eip8051} (precompilado ML-DSA)--- abordan la verificación a nivel de contrato inteligente pero no la autenticación a nivel de protocolo.
+
+
 \section{Objetivos}
+
 \subsection{Objetivo general}
+
+Demostrar la viabilidad de migrar la capa de transacciones de un cliente de ejecución Ethereum a criptografía post-cuántica basada en retículos, mediante la implementación de un tipo de transacción nativo con ML-DSA-65 y su validación en un entorno multi-nodo.
+
 \subsection{Objetivos específicos}
+
+\begin{enumerate}[label=\textbf{OE\arabic*.}]
+  \item Simular los ataques de Shor (recuperación de clave privada ECDLP) y Grover (búsqueda de preimagen hash) sobre modelos reducidos de las primitivas criptográficas de Ethereum mediante circuitos cuánticos implementados con Qiskit.
+  
+  \item Diseñar un formato de transacción post-cuántica (\texttt{0x50}) compatible con la especificación EIP-2718 (\emph{Typed Transaction Envelope}), incluyendo la codificación RLP, el esquema de firma y el hash de transacción.
+  
+  \item Implementar la derivación de direcciones post-cuánticas basada en SHAKE-256 como alternativa a Keccak-256, garantizando la separación de dominios con las direcciones clásicas.
+  
+  \item Implementar un \emph{opcode} EVM (\texttt{PQHASH}, \texttt{0x21}) para computación SHAKE-256 dentro de contratos inteligentes, y un precompilado (\texttt{0x0100}) para verificación ML-DSA-65.
+  
+  \item Diseñar e implementar un mecanismo de consenso Proof of Authority (PoA) con sellado de bloques mediante ML-DSA-65 y rotación round-robin de validadores, como alternativa al Proof of Stake que requiere agregación BLS.
+  
+  \item Desarrollar un \emph{wallet} post-cuántico con interfaz de línea de comandos (CLI) y terminal interactiva (TUI) que permita la generación de claves, firma de transacciones y consulta de saldos.
+  
+  \item Validar la solución completa mediante una suite de pruebas extremo a extremo (E2E) ejecutada sobre un clúster de tres nodos validadores, verificando identidad de cadena, consenso, comisiones, transacciones, contratos y consistencia de estado.
+  
+  \item Redactar una propuesta de EIP (\emph{Ethereum Improvement Proposal}) que formalice la especificación del tipo de transacción post-cuántica para su eventual presentación a la comunidad Ethereum.
+\end{enumerate}
+
 
 \section{Antecedentes}
 
+\subsection*{Estandarización post-cuántica del NIST}
+
+En 2016, el Instituto Nacional de Estándares y Tecnología de Estados Unidos (NIST) inició un proceso de selección de algoritmos criptográficos resistentes a ataques cuánticos. Tras tres rondas de evaluación pública, en agosto de 2024 se publicaron los tres primeros estándares finales \parencite{nistfips203, nistfips204, nistfips205}:
+
+\begin{itemize}
+  \item \textbf{FIPS-203 (ML-KEM)}: Mecanismo de encapsulación de claves basado en Module-LWE (antes CRYSTALS-Kyber).
+  \item \textbf{FIPS-204 (ML-DSA)}: Esquema de firma digital basado en Module-LWE (antes CRYSTALS-Dilithium). Es el esquema empleado en este trabajo.
+  \item \textbf{FIPS-205 (SLH-DSA)}: Esquema de firma digital basado en funciones hash (antes SPHINCS+), sin asunciones sobre retículos.
+\end{itemize}
+
+El corpus bibliográfico de este trabajo incluye las especificaciones completas de los tres estándares, así como las implementaciones de referencia de los candidatos originales del NIST (Dilithium, Falcon, Kyber, SPHINCS+).
+
+\subsection*{Propuestas existentes en Ethereum}
+
+EIP-2718 \parencite{eip2718} estableció en 2020 el marco de transacciones tipadas (\emph{Typed Transaction Envelope}), que permite añadir nuevos formatos de transacción sin romper la compatibilidad con los existentes. Actualmente se han asignado los tipos \texttt{0x00}--\texttt{0x04}.
+
+EIP-7932 propone un registro de algoritmos de firma secundarios con un precompilado \texttt{sigrecover}. EIP-8051 propone precompilados específicos para verificación ML-DSA. Ambas propuestas abordan la verificación a nivel de contrato inteligente, pero ninguna define un tipo de transacción nativo, que es la contribución principal de este trabajo.
+
+\subsection*{Trabajos relacionados en blockchain post-cuántica}
+
+Varios trabajos académicos han explorado la integración de criptografía post-cuántica en redes blockchain. \textcite{quantumsafeblockchain2018} presentan un esquema de blockchain protegida cuánticamente. \textcite{quantumresistance2023nature} analizan la resistencia cuántica en redes blockchain desde una perspectiva general. \textcite{surveycomparison2023} ofrecen una comparativa exhaustiva de blockchains post-cuánticas y cuánticas. \textcite{quantumsafefabric2024} implementan protección post-cuántica en Hyperledger Fabric. El presente trabajo se diferencia al abordar específicamente la EVM de Ethereum con una implementación nativa a nivel de protocolo.
+
+
 \section{Metodología}
 
+El desarrollo del proyecto sigue una metodología iterativa basada en \emph{sprints} semanales, con las siguientes prácticas:
+
+\begin{itemize}
+  \item \textbf{Control de versiones}: Repositorios Git con flujo de ramas por funcionalidad (\emph{feature branches}), integración mediante \emph{pull requests} con \emph{squash and merge}.
+  
+  \item \textbf{Integración continua}: Cada \emph{pull request} se valida con \texttt{cargo test} (tests unitarios e integración), \texttt{cargo clippy} (análisis estático) y \texttt{cargo +nightly fmt} (formato).
+  
+  \item \textbf{Pila tecnológica}:
+  \begin{itemize}
+    \item Rust 1.95 (nodo de ejecución, \emph{wallet}, librería criptográfica)
+    \item Python 3.13 + Qiskit 2.3 + Qiskit Aer 0.17 (simulación cuántica)
+    \item Docker + docker-compose (despliegue multi-nodo)
+    \item ratatui 0.29 + crossterm 0.28 (interfaz TUI)
+  \end{itemize}
+  
+  \item \textbf{Estructura de repositorios}:
+  \begin{itemize}
+    \item \texttt{PostQuantumEVM/} --- repositorio raíz (orquestación, infraestructura, E2E)
+    \item \texttt{pq-reth/} --- \emph{fork} de reth con cinco \emph{crates} post-cuánticos
+    \item \texttt{pq-wallet/} --- \emph{wallet} CLI, TUI y suite E2E
+    \item \texttt{ml-lattice-rs/} --- submódulo con implementación de ML-KEM y ML-DSA
+    \item \texttt{qiskit-api/} --- API de simulación cuántica
+  \end{itemize}
+\end{itemize}
+
+
 \section{Organización del documento}
+
+El resto de la memoria se estructura en los siguientes capítulos:
+
+\begin{itemize}
+  \item \textbf{Capítulo 2 -- Marco Teórico}: Presenta los fundamentos matemáticos de la criptografía de curva elíptica, la computación cuántica (algoritmos de Shor y Grover), la criptografía basada en retículos (LWE, Module-LWE, ML-DSA), la arquitectura de Ethereum y la EVM, el cliente reth, y las funciones hash extensibles SHAKE-256.
+  
+  \item \textbf{Capítulo 3 -- Análisis de la Situación}: Detalla las vulnerabilidades cuánticas de Ethereum, define los requisitos funcionales y no funcionales, y presenta la solución propuesta junto con las alternativas descartadas.
+  
+  \item \textbf{Capítulo 4 -- Desarrollo}: Describe la implementación de cada componente: simulación cuántica (Qiskit), tipo de transacción \texttt{0x50}, primitivas criptográficas, EVM post-cuántica, consenso PoA, \emph{wallet} y infraestructura de despliegue.
+  
+  \item \textbf{Capítulo 5 -- Resultados}: Presenta los resultados de las simulaciones cuánticas, los tests unitarios y de integración, la validación E2E en configuración single-node y multi-nodo, el análisis de rendimiento, la comparativa con el estado del arte, y la propuesta de EIP.
+  
+  \item \textbf{Capítulo 6 -- Conclusiones y Trabajos Futuros}: Resume los objetivos alcanzados, identifica limitaciones del trabajo y propone líneas de trabajo futuro.
+\end{itemize}
