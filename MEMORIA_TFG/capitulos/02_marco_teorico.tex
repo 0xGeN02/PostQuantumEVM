@@ -1,4 +1,5 @@
 \chapter{MARCO TEÓRICO}
+\label{cap:marco_teorico}
 
 Este capítulo presenta los fundamentos matemáticos y tecnológicos sobre los que se construye el trabajo. Se parte de la criptografía de curva elíptica (la primitiva que se pretende reemplazar), se introducen los modelos de computación cuántica y los algoritmos que la amenazan, se formalizan los problemas de retículos que fundamentan la alternativa post-cuántica, y se describe la infraestructura de Ethereum que es objeto de modificación.
 
@@ -537,6 +538,73 @@ Se eligió ML-DSA-65 (nivel III, seguridad clásica de 192 bits, cuántica de 12
 
 
 %% ═══════════════════════════════════════════════════════════
+\section{ML-KEM (FIPS-203)}
+\label{sec:mlkem}
+%% ═══════════════════════════════════════════════════════════
+
+ML-KEM (\emph{Module Lattice-Based Key-Encapsulation Mechanism}), estandarizado como FIPS-203 \parencite{nistfips203} en agosto de 2024, es el sucesor del candidato CRYSTALS-Kyber. A diferencia de ML-DSA (firma digital), ML-KEM es un mecanismo de \emph{encapsulación de claves}: permite a dos partes establecer una clave simétrica compartida sobre un canal inseguro sin requerir un intercambio Diffie-Hellman vulnerable a Shor. Opera sobre el mismo tipo de anillo $R_q = \mathbb{Z}_q[X]/(X^{256}+1)$ que ML-DSA, pero con $q = 3.329$ (mucho menor, optimizado para encapsulación rápida).
+
+\subsection{Generación de claves}
+
+\begin{enumerate}
+  \item Generar una semilla $d \xleftarrow{\$} \{0,1\}^{256}$.
+  \item Expandir $d$ con SHAKE-128 para obtener la matriz $\mathbf{A} \in R_q^{k \times k}$.
+  \item Muestrear los vectores secretos $\mathbf{s}, \mathbf{e} \in R_q^k$ desde una distribución binomial centrada $B_\eta$ (coeficientes pequeños).
+  \item Calcular $\mathbf{t} = \mathbf{A}\mathbf{s} + \mathbf{e} \in R_q^k$.
+  \item La \emph{clave de encapsulación} es $ek = (\mathbf{A}, \mathbf{t})$; la \emph{clave de desencapsulación} es $dk = (\mathbf{s}, ek, H(ek), z)$, donde $z$ es una semilla para el rechazo implícito.
+\end{enumerate}
+
+\subsection{Encapsulación}
+
+Dado $ek$ del receptor, el emisor calcula $(ct, K) = \textsf{Encaps}(ek)$:
+
+\begin{enumerate}
+  \item Generar un mensaje aleatorio $m \xleftarrow{\$} \{0,1\}^{256}$.
+  \item Derivar $(K, r) = G(m \| H(ek))$, donde $G$ es SHA3-512.
+  \item Muestrear $\mathbf{r} \in R_q^k$ y errores $\mathbf{e}_1 \in R_q^k$, $e_2 \in R_q$ desde $B_\eta$ usando $r$ como semilla.
+  \item Calcular $\mathbf{u} = \mathbf{A}^\top \mathbf{r} + \mathbf{e}_1$ y $v = \mathbf{t}^\top \mathbf{r} + e_2 + \textsf{Compress}_q(m, 1)$.
+  \item El \emph{ciphertext} es $ct = (\textsf{Compress}_q(\mathbf{u}, d_u), \textsf{Compress}_q(v, d_v))$.
+  \item La clave compartida es $K \in \{0,1\}^{256}$.
+\end{enumerate}
+
+La compresión (descarte de bits bajos) es esencial: reduce el tamaño del ciphertext al precio de introducir un pequeño error adicional que la corrección de descodificación de LWE absorbe.
+
+\subsection{Desencapsulación}
+
+El receptor, conocedor de $dk$, recupera la clave compartida $K = \textsf{Decaps}(dk, ct)$:
+
+\begin{enumerate}
+  \item Descomprimir $\mathbf{u}'$ y $v'$ a partir de $ct$.
+  \item Calcular $m' = \textsf{Compress}_q(v' - \mathbf{s}^\top \mathbf{u}', 1)$.
+  \item Derivar $(K', r') = G(m' \| H(ek))$ y recomputar el ciphertext esperado $ct'$.
+  \item Si $ct = ct'$, devolver $K'$; en caso contrario, devolver $K_{\text{rej}} = J(z \| ct)$ (\emph{rechazo implícito}: el receptor devuelve una clave pseudoaleatoria indistinguible para evitar ataques de oráculo de descodificación).
+\end{enumerate}
+
+El rechazo implícito convierte el esquema CPA-seguro subyacente (Kyber.CPAPKE) en un KEM IND-CCA2 mediante la transformación de Fujisaki-Okamoto, sin requerir abortar la sesión.
+
+\subsection{Niveles de seguridad}
+
+\begin{table}[htbp]
+\centering
+\caption{Parámetros y tamaños de ML-KEM por nivel de seguridad.}
+\label{tab:mlkem_params}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+\textbf{Variante} & \textbf{NIST} & $k$ & \textbf{|ek| (B)} & \textbf{|dk| (B)} & \textbf{|ct| (B)} \\
+\midrule
+ML-KEM-512  & I   & 2 & 800   & 1.632 & 768   \\
+\textbf{ML-KEM-768}  & \textbf{III} & \textbf{3} & \textbf{1.184} & \textbf{2.400} & \textbf{1.088} \\
+ML-KEM-1024 & V   & 4 & 1.568 & 3.168 & 1.568 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La clave compartida $K$ siempre tiene 32 bytes (256 bits), independiente del nivel: ML-KEM solo se usa para acordar una semilla simétrica que luego alimenta a un cifrado de flujo (AES-256-GCM o ChaCha20-Poly1305).
+
+\paragraph{Rol en este trabajo.} ML-KEM no se utiliza en la capa de transacciones (donde ML-DSA-65 cubre la autenticación), sino que se reserva como primitiva para el \emph{handshake} del canal P2P entre nodos. La implementación reside en el módulo \texttt{ml-lattice-rs/kyber/} (envoltorio del \emph{crate} \texttt{ml-kem} de RustCrypto, conforme a FIPS-203) y expone una API ergonómica con los tres niveles de seguridad. Su despliegue activo en el protocolo de red queda como trabajo futuro (\S\ref{sec:futuro}), ya que el prototipo actual ejecuta los nodos en una red privada controlada donde el riesgo de \emph{man-in-the-middle} cuántico no es el factor crítico de validación.
+
+
+%% ═══════════════════════════════════════════════════════════
 \section{Ethereum y la Máquina Virtual de Ethereum (EVM)}
 \label{sec:ethereum}
 %% ═══════════════════════════════════════════════════════════
@@ -628,6 +696,69 @@ El ciclo de vida típico de un contrato es:
   \item \textbf{Invocación}: cualquier mensaje posterior con $T.\textsf{to} = a$ ejecuta el bytecode con el calldata como entrada.
   \item \textbf{Autodestrucción} (\texttt{SELFDESTRUCT}, restringido desde EIP-6780): elimina el contrato y reembolsa su balance a una dirección beneficiaria.
 \end{enumerate}
+
+\subsection{Formalización como autómata finito determinista}
+\label{sec:evm_fsm}
+
+Aunque las descripciones anteriores siguen el estilo informal del \emph{Yellow Paper}, la EVM admite una formalización rigurosa como autómata finito determinista extendido (DFA con memoria auxiliar). Esta formalización conecta el diseño de la EVM con la teoría clásica de autómatas y lenguajes formales, y proporciona un marco para razonar sobre la corrección de las transiciones que introduce la migración post-cuántica (nuevo opcode \texttt{PQHASH}, precompilado \texttt{0x0100}, transacciones tipo \texttt{0x50}).
+
+\begin{definicion}[EVM como autómata]
+\label{def:evm_fsm}
+La Máquina Virtual de Ethereum se modela como la quíntupla
+\begin{equation}
+  \mathcal{M}_{\text{EVM}} = (Q, \Sigma, \delta, q_0, F),
+  \label{eq:evm_dfa}
+\end{equation}
+donde:
+\begin{itemize}
+  \item $Q = \text{PC} \times \text{Stack}^{\leq 1024} \times \text{Mem} \times \text{Storage} \times \mathbb{N}_{\text{gas}} \times \text{Calldata} \times \text{Returndata}$ es el conjunto de \emph{configuraciones}. Cada $q \in Q$ codifica la totalidad del estado de ejecución: contador de programa, pila (hasta 1024 palabras de 256 bits), memoria volátil, almacenamiento persistente del contrato, gas restante, datos de entrada y datos de retorno de la última llamada.
+  \item $\Sigma = \{0\text{x}00, 0\text{x}01, \ldots, 0\text{x}FF\}$ es el \emph{alfabeto} de instrucciones (256 opcodes posibles, de los cuales aproximadamente 142 están definidos en la especificación actual; los restantes son \texttt{INVALID}).
+  \item $\delta : Q \times \Sigma \to Q$ es la \emph{función de transición}: dado un estado $q$ y el opcode $\texttt{op}$ apuntado por $q.\text{PC}$, $\delta(q, \texttt{op})$ produce la siguiente configuración aplicando el efecto del opcode sobre la pila, la memoria, el almacenamiento, y decrementando $q.\text{gas}$ en el coste correspondiente. La función es \emph{determinista}: dada una misma $(q, \texttt{op})$, el resultado es único y reproducible en todos los nodos honestos.
+  \item $q_0 = (\text{PC}=0,\, \varepsilon,\, \mathbf{0},\, \sigma[a].\textsf{storage},\, g_0,\, \textsf{calldata},\, \varepsilon)$ es el \emph{estado inicial} de cada invocación: contador a cero, pila vacía, memoria a cero, almacenamiento heredado de la cuenta $a$, gas igual al \emph{gas\_limit} concedido, calldata provista por la transacción y returndata vacía.
+  \item $F = \{\textsf{STOP}, \textsf{RETURN}, \textsf{REVERT}, \textsf{INVALID}, \textsf{OOG}\}$ es el conjunto de \emph{estados terminales}. \texttt{STOP} y \texttt{RETURN} representan finalización exitosa (los cambios de $\sigma$ se materializan); \texttt{REVERT} indica error explícito (los cambios se descartan, el gas no consumido se devuelve); \texttt{INVALID} corresponde a una instrucción no reconocida o violación de invariantes (todo el gas se consume); \texttt{OOG} (\emph{out of gas}) se alcanza cuando $q.\text{gas} < \textsf{cost}(\texttt{op})$.
+\end{itemize}
+\end{definicion}
+
+La función de transición $\delta$ admite una descomposición canónica que ilustra su naturaleza:
+\begin{equation}
+  \delta(q, \texttt{op}) =
+    \begin{cases}
+      \textsf{OOG} & \text{si } q.\text{gas} < \textsf{cost}(\texttt{op}), \\
+      \textsf{INVALID} & \text{si } \texttt{op} \notin \Sigma_{\text{def}}, \\
+      \delta_{\texttt{op}}(q) & \text{en caso contrario},
+    \end{cases}
+  \label{eq:delta_evm}
+\end{equation}
+donde $\Sigma_{\text{def}} \subset \Sigma$ es el subconjunto de opcodes definidos y $\delta_{\texttt{op}}$ es la regla específica del opcode (por ejemplo, $\delta_{\texttt{ADD}}$ extrae los dos elementos superiores de la pila, los suma módulo $2^{256}$, y empuja el resultado).
+
+\paragraph{Extensión con el opcode \texttt{PQHASH}.} La introducción del opcode \texttt{0x21} (\texttt{PQHASH}) en este trabajo equivale a extender el alfabeto $\Sigma_{\text{def}}$ en una unidad y añadir una nueva regla $\delta_{\texttt{PQHASH}}$ que aplica SHAKE-256 sobre un fragmento de memoria. Esta extensión preserva el determinismo de $\delta$ y la naturaleza finita de $\Sigma$, por lo que el autómata resultante es estructuralmente equivalente al original: las propiedades de corrección y de convergencia del consenso se mantienen.
+
+\paragraph{Diagrama de estados.} La Figura \ref{fig:evm_dfa} representa gráficamente las clases de estados y las transiciones agregadas del autómata. Los estados internos durante la ejecución se agrupan en el nodo \textsc{Ejecutando}, cuyas autotransiciones modelan la evolución por aplicación sucesiva de $\delta$. Las transiciones a estados terminales determinan el destino final de la ejecución (commit o rollback).
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  ->, >=stealth, node distance=2.5cm, semithick,
+  every state/.style={align=center, minimum size=1.1cm, font=\small},
+  initial text={},
+]
+  \node[state, initial above, fill=blue!10] (q0) {$q_0$};
+  \node[state, right of=q0, xshift=1.5cm, fill=yellow!15] (run) {Ejecutando};
+  \node[state, accepting, above right of=run, xshift=1.5cm, fill=green!15] (stop) {\textsc{Stop}\\\textsc{Return}};
+  \node[state, right of=run, xshift=2cm, fill=orange!20] (revert) {\textsc{Revert}};
+  \node[state, below right of=run, xshift=1.5cm, fill=red!20] (oog) {\textsc{Oog}\\\textsc{Invalid}};
+
+  \path (q0) edge node[above, font=\scriptsize] {init} (run)
+        (run) edge[loop above] node[font=\scriptsize] {$\delta(q,\texttt{op})$} (run)
+        (run) edge[bend left=15] node[above, font=\scriptsize] {\texttt{STOP / RETURN}} (stop)
+        (run) edge node[above, font=\scriptsize, sloped] {\texttt{REVERT}} (revert)
+        (run) edge[bend right=15] node[below, font=\scriptsize, sloped] {gas$=0$ / op$\notin\Sigma_{\text{def}}$} (oog);
+\end{tikzpicture}
+\caption{Autómata finito determinista $\mathcal{M}_{\text{EVM}}$. La ejecución comienza en $q_0$, evoluciona por aplicaciones sucesivas de $\delta$ dentro del estado agregado \textsc{Ejecutando} (cada opcode consume gas y modifica la configuración), y converge a uno de los estados terminales: \textsc{Stop}/\textsc{Return} comprometen los cambios al estado mundial; \textsc{Revert} los descarta pero devuelve gas; \textsc{Oog}/\textsc{Invalid} descartan los cambios y consumen todo el gas.}
+\label{fig:evm_dfa}
+\end{figure}
+
+Este modelado conecta directamente el diseño del sistema con la teoría de autómatas finitos deterministas y lenguajes formales abordada en la titulación (RA RPFA-HABI-12 y RPFA-COMP-12, ver anexo de Resultados de Aprendizaje). En particular, demuestra que la EVM no es una máquina arbitrariamente compleja, sino un autómata cuyo alfabeto, conjunto de configuraciones, función de transición y conjunto de estados terminales pueden enumerarse exhaustivamente; cualidad imprescindible para que cualquier extensión post-cuántica preserve la propiedad de \emph{determinismo replicado} de la que depende el consenso.
 
 \subsection{Cómo la migración post-cuántica preserva los contratos}
 

@@ -372,6 +372,32 @@ Los precompilados basados en curvas elípticas y emparejamientos bilineales se r
 
 Los precompilados de funciones hash (\texttt{0x02} SHA-256, \texttt{0x03} RIPEMD-160, \texttt{0x09} Blake2f), la identidad (\texttt{0x04}) y la exponenciación modular (\texttt{0x05}) se mantienen activos, al ser resistentes a ataques cuánticos.
 
+\subsection{Decisión de diseño: simplificación de precompilados}
+\label{sec:precompile_decision}
+
+La propuesta inicial de este Trabajo Fin de Grado contemplaba un conjunto de \emph{cuatro} precompilados post-cuánticos para cubrir las primitivas criptográficas más relevantes:
+
+\begin{itemize}
+  \item \texttt{0x100}: BLAKE3-512 (función hash extensible alternativa a Keccak/SHAKE).
+  \item \texttt{0x101}: ML-DSA-65 (verificación de firma).
+  \item \texttt{0x102}: ML-KEM-768 (encapsulación/desencapsulación de claves).
+  \item \texttt{0x103}: derivación de claves PQ a partir de semillas.
+\end{itemize}
+
+Durante la fase de diseño detallado se decidió consolidar el conjunto en un único precompilado activo (\texttt{0x0100}, ML-DSA-65 verify). Las razones que justifican esta simplificación son las siguientes:
+
+\begin{enumerate}
+  \item \textbf{BLAKE3 no aporta ventaja post-cuántica.} Las funciones hash basadas en construcciones Merkle--Damgård o esponja (SHA-256, SHA-3/Keccak, SHAKE) ya son resistentes a Grover; la duplicación de longitud de salida proporciona el mismo margen de seguridad ($\sim$128 bits cuánticos para un hash de 256 bits). Añadir BLAKE3 introduciría una primitiva extra sin mejora criptográfica medible y ampliaría la superficie de auditoría sin contraprestación. Cuando se requiere SHAKE-256 desde la EVM, este trabajo lo expone mediante el opcode \texttt{PQHASH} (\S\ref{sec:opcode_pqhash}), que es estructuralmente más barato que un precompilado.
+
+  \item \textbf{ML-KEM opera en otra capa.} El mecanismo de encapsulación de claves es una primitiva de \emph{transporte} entre nodos (handshake del canal P2P para sustituir el ECDH actual de devp2p), no una operación de contrato inteligente. No existe un caso de uso natural en el que un contrato necesite ejecutar \textsf{Encaps} o \textsf{Decaps} on-chain: las claves simétricas resultantes carecen de sentido en un entorno público. Por consistencia con el principio de \emph{separación de capas}, ML-KEM se mantiene como dependencia del cliente (\texttt{ml-lattice-rs/kyber/}) pero no se expone como precompilado.
+
+  \item \textbf{Derivación de claves PQ vía opcode.} El precompilado \texttt{0x103} originalmente previsto se subsume en el opcode \texttt{PQHASH}: cualquier contrato que necesite derivar claves o identificadores a partir de SHAKE-256 puede hacerlo con una sola instrucción de bytecode, evitando el coste de invocación de un precompilado (overhead de \texttt{CALL} más argumentos de pila).
+
+  \item \textbf{Principio de mínima superficie criptográfica.} Cada precompilado adicional representa un punto fijo en el protocolo: una vez desplegado, su semántica no puede modificarse sin un \emph{hard fork}. Reducir el conjunto inicial al mínimo necesario (verificación ML-DSA-65) facilita la auditoría, simplifica la implementación cruzada por parte de otros clientes Ethereum (geth, Nethermind, Besu, Erigon) y deja margen para añadir nuevos precompilados de forma incremental conforme aparezcan casos de uso justificados.
+\end{enumerate}
+
+El resultado es un diseño más conservador y alineado con la filosofía minimalista de las EIP recientes (EIP-7212 \emph{secp256r1 precompile}, EIP-2537 \emph{BLS12-381}): un único precompilado por familia criptográfica, con interfaz binaria sencilla y coste de gas calibrado empíricamente.
+
 
 %% ═══════════════════════════════════════════════════════════
 \section{Consenso Proof of Authority}

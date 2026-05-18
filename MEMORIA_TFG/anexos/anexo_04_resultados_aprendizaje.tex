@@ -1,0 +1,68 @@
+\section{Anexo 4: Resultados de Aprendizaje}
+\label{sec:anexo_ra}
+
+Este anexo vincula los nueve Resultados de Aprendizaje (RA) declarados en la propuesta del Trabajo Fin de Grado con las secciones específicas de la memoria y los componentes del repositorio que evidencian su consecución. Se incluyen tres RA por cada uno de los tres tipos definidos en el plan de estudios del Grado en Ingeniería de Sistemas de Información (GISI) de la Universidad UIE: \emph{Conocimiento} (RPFA-CONO), \emph{Habilidad} (RPFA-HABI) y \emph{Competencia} (RPFA-COMP).
+
+\subsection*{Conocimiento}
+
+\begin{table}[htbp]
+\centering
+\caption{Resultados de Aprendizaje de tipo Conocimiento.}
+\label{tab:ra_cono}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{5.8cm}>{\raggedright\arraybackslash}p{6.2cm}@{}}
+\toprule
+\textbf{Código} & \textbf{Descripción} & \textbf{Vinculación en la memoria} \\
+\midrule
+RPFA-CONO-09 & Conceptos, métodos, modelos y herramientas computacionales con énfasis en complejidad computacional, arquitectura de software y modelos de computación emergente. & §2.1--2.3 (computación cuántica, Shor, Grover), §2.5 (arquitectura EVM), §4 (arquitectura del fork reth), §5.1 (simulaciones Qiskit). \\
+\addlinespace
+RPFA-CONO-10 & Definiciones, propiedades, representación y operaciones de la lógica proposicional, los conjuntos, las estructuras tipo grafos y árboles, y las herramientas de matemática discreta. & §2.4 (retículos, Module-LWE, bases de retículos como grafos en $\mathbb{R}^n$), §2.5.3 (Merkle Patricia Trie como árbol radix híbrido), §5.7 (análisis de seguridad). \\
+\addlinespace
+RPFA-CONO-11 & Conceptos, componentes y métodos de un problema de optimización de funciones matemáticas, y uso de herramientas software para su representación y solución. & §4.3 (calibración del coste de gas del precompilado como problema de optimización: minimizar gas s.a.\ restricciones de seguridad y latencia), §5.4--5.5 (análisis de throughput, latencia y tamaño de bloque). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{Habilidad}
+
+\begin{table}[htbp]
+\centering
+\caption{Resultados de Aprendizaje de tipo Habilidad.}
+\label{tab:ra_habi}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{5.8cm}>{\raggedright\arraybackslash}p{6.2cm}@{}}
+\toprule
+\textbf{Código} & \textbf{Descripción} & \textbf{Vinculación en la memoria} \\
+\midrule
+RPFA-HABI-09 & Aplicar conceptos, métodos, modelos y herramientas de complejidad computacional, arquitectura software y computación cuántica y natural para resolver problemas en ingeniería y empresa. & §2.1--2.3 + §5.1 (despliegue de Shor sobre $\mathbb{F}_{17}$ y Grover sobre Keccak reducido en Qiskit), §3 (análisis de impacto del riesgo cuántico en la industria blockchain). \\
+\addlinespace
+RPFA-HABI-10 & Aplicar conceptos, modelos, operaciones y herramientas de matemática discreta para analizar, representar y resolver problemas dentro de la profesión. & §2.4 (operaciones en anillos $R_q$, NTT, retículos), §4.2 (derivación de direcciones con SHAKE-256, codificación RLP), §4.4 (formato binario de la transacción \texttt{0x50}). \\
+\addlinespace
+RPFA-HABI-12 & Utilizar la teoría de autómatas, los lenguajes formales, las expresiones regulares, sus operaciones y herramientas software para representar, analizar y resolver problemas de naturaleza discreta. & §2.5.4 (formalización de la EVM como autómata finito determinista $\mathcal{M}_{\text{EVM}} = (Q, \Sigma, \delta, q_0, F)$ con diagrama de estados, Figura \ref{fig:evm_dfa}). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{Competencia}
+
+\begin{table}[htbp]
+\centering
+\caption{Resultados de Aprendizaje de tipo Competencia.}
+\label{tab:ra_comp}
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{5.8cm}>{\raggedright\arraybackslash}p{6.2cm}@{}}
+\toprule
+\textbf{Código} & \textbf{Descripción} & \textbf{Vinculación en la memoria} \\
+\midrule
+RPFA-COMP-10 & Identificar, formular, modelar, analizar y resolver problemas complejos cuya solución requiera el uso de las matemáticas discretas en ingeniería y empresa. & §3 (análisis de la situación y planteamiento del problema), §4 completo (diseño e implementación del tipo de transacción \texttt{0x50}, mempool, opcode \texttt{PQHASH}, precompilado \texttt{0x0100}). \\
+\addlinespace
+RPFA-COMP-11 & Identificar, describir, formular, analizar, resolver e interpretar los resultados de problemas de optimización de funciones lineales y no lineales con y sin restricciones, mediante diferentes métodos y herramientas software. & §4.3 (gas metering: $g = \lceil t_{\mu s} \cdot r_{\text{gas}/\mu s} \cdot \alpha \rceil$ con factor de seguridad $\alpha = 1{,}35$), §5.4--5.5 (interpretación empírica: throughput, latencia, tamaño de bloque). \\
+\addlinespace
+RPFA-COMP-12 & Identificar, formular, modelar, analizar y resolver problemas de naturaleza discreta con el uso de autómatas determinísticos y no-determinísticos en ingeniería y empresa. & §2.5.4 (EVM como DFA), §4.1 (extensión del alfabeto $\Sigma$ con el opcode \texttt{PQHASH} preservando determinismo), §4.4 (validación de transacciones \texttt{0x50} en el mempool como aceptación por autómata). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{Síntesis}
+
+La conjunción de los nueve RA cubre los tres ejes formativos esperados del título: (i) \emph{fundamentos teóricos} (CONO) materializados en el marco teórico del Capítulo \ref{cap:marco_teorico}; (ii) \emph{habilidades prácticas} (HABI) materializadas en la implementación del fork PQ-reth, la biblioteca \texttt{ml-lattice-rs} y las simulaciones cuánticas del Capítulo \ref{cap:resultados}; y (iii) \emph{competencias transversales} (COMP) materializadas en la formulación rigurosa del problema, su modelado como autómata, la optimización de los costes de gas y la validación empírica multinodo. El TFG cubre, por tanto, los tres RA requeridos en cada categoría según la propuesta original.
