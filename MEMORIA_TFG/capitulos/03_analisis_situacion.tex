@@ -98,28 +98,31 @@ El flujo, ilustrado en la Figura~\ref{fig:user_migration}, consta de cinco etapa
 \node[step=orange!20, right=0.5cm of s2] (s3) {3.~TX puente\\$A \to A'$ (ECDSA)};
 \node[step=green!15, right=0.5cm of s3] (s4) {4.~Operar con\\TX 0x50 (PQ)};
 
-% Step 5 below
-\node[step=red!12, below=0.8cm of s3] (s5) {5.~Fin del periodo\\de gracia};
+% Step 5 below s4 (triggered by protocol after grace period)
+\node[step=red!12, below=1.2cm of s4] (s5) {5.~Fin del periodo\\de gracia};
 
-% Arrows
+% Horizontal arrows (Usuario flow)
 \draw[arr] (s1) -- (s2);
 \draw[arr] (s2) -- (s3);
 \draw[arr] (s3) -- (s4);
-\draw[arr] (s4.south) -- ++(0, -0.4) -| (s5.north east);
 
-% Annotation under transfer
-\node[font=\scriptsize, gray!70!black, align=center, below=2pt of s3]
-  {última firma\\ECDSA};
+% Vertical arrow from s4 to s5 (protocol-triggered, dashed)
+\draw[arr, dashed, gray!70] (s4.south) -- (s5.north)
+  node[midway, right=2pt, font=\scriptsize, gray!80!black, align=left] {tras\\$\Delta_\text{gracia}$};
 
-% Labels at left
-\node[font=\footnotesize\bfseries, anchor=east] at (-0.7, 0) {Usuario};
-\node[font=\footnotesize\bfseries, anchor=east] at (-0.7, -2.5) {Red};
+% Annotation: last ECDSA signature points to s3
+\node[font=\scriptsize, gray!70!black, align=center, above=4pt of s3]
+  (lastecdsa) {última firma ECDSA};
+
+% Labels at left (well separated from boxes)
+\node[font=\footnotesize\bfseries, anchor=east] at (-1.6, 0) {Usuario};
+\node[font=\footnotesize\bfseries, anchor=east] at (-1.6, -2.3) {Red};
 
 % Time arrow
 \draw[->, gray!50, very thick] (-0.5, -3.6) -- (12, -3.6)
   node[right, gray!60, font=\footnotesize] {tiempo};
 \node[gray!60, font=\scriptsize] at (0, -3.85) {$t_0$};
-\node[gray!60, font=\scriptsize] at (8, -3.85) {$t_0 + \Delta_\text{gracia}$};
+\node[gray!60, font=\scriptsize] at (9.3, -3.85) {$t_0 + \Delta_\text{gracia}$};
 
 \end{tikzpicture}
 \caption{Flujo de migración de un usuario desde una cuenta clásica $A$ a una cuenta post-cuántica $A'$. La transacción puente (paso 3) es la última firma ECDSA que el usuario produce; los pasos 1, 2 y 4 son completamente PQ. El paso 5 lo dispara el protocolo, no el usuario.}
@@ -234,10 +237,10 @@ La solución se estructura como un sistema distribuido de tres capas: una capa c
 \node[box, fill=blue!10] (mllattice) at (0, 0) {ml-lattice-rs\\(ML-DSA-65)};
 
 % Capa de protocolo
-\node[box, fill=green!10] (primitives) at (-4, 2.5) {pq-primitives\\(TX 0x50, RLP)};
-\node[box, fill=green!10] (consensus) at (-1.3, 2.5) {pq-consensus\\(PoA, sellado)};
-\node[box, fill=green!10] (evm) at (1.4, 2.5) {pq-evm\\(PQHASH, 0x0100)};
-\node[box, fill=green!10] (network) at (4.1, 2.5) {pq-network\\(propagación)};
+\node[box, fill=green!10] (primitives) at (-5.25, 2.5) {pq-primitives\\(TX 0x50, RLP)};
+\node[box, fill=green!10] (consensus) at (-1.75, 2.5) {pq-consensus\\(PoA, sellado)};
+\node[box, fill=green!10] (evm) at (1.75, 2.5) {pq-evm\\(PQHASH, 0x0100)};
+\node[box, fill=green!10] (network) at (5.25, 2.5) {pq-network\\(propagación)};
 
 % Capa de interacción
 \node[box, fill=orange!10] (wallet) at (-2, 5) {pq-wallet\\(CLI / TUI)};
