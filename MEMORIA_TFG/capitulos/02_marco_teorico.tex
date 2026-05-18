@@ -300,7 +300,9 @@ La Figura~\ref{fig:grover_circuit} muestra la estructura del circuito de Grover 
 }
 
 % Brace for iterations
-\draw[brace] (2.1, -3.3) -- (8.5, -3.3) node[midway, below=8pt, font=\small] {$k_{\text{opt}} = \lfloor \frac{\pi}{4}\sqrt{N/M} \rfloor$ iteraciones};
+\draw[brace] (2.1, -3.3) -- (8.5, -3.3)
+  node[midway, below=14pt, font=\normalsize]
+  {$\displaystyle k_{\text{opt}} = \left\lfloor \tfrac{\pi}{4}\sqrt{N/M} \right\rfloor \text{ iteraciones}$};
 
 \end{tikzpicture}
 \caption{Circuito de Grover para $n=4$ qubits. Cada iteración aplica el oráculo de fase $O_f$ (invierte la fase de las soluciones) y el operador de difusión $D = 2\ket{s}\bra{s} - I$ (amplifica la amplitud de los estados marcados).}
