@@ -181,7 +181,7 @@ La Figura~\ref{fig:shor_circuit} muestra la estructura del circuito cuántico pa
 % Qubit lines
 \foreach \y/\lbl in {0/$\ket{0}^{\otimes m}$ reg.\ $a$, -1.2/$\ket{0}^{\otimes m}$ reg.\ $b$, -2.4/$\ket{0}^{\otimes m}$ reg.\ salida} {
   \node[anchor=east, font=\small] at (-0.3, \y) {\lbl};
-  \draw[wire] (0, \y) -- (11.5, \y);
+  \draw[wire] (0, \y) -- (10, \y);
 }
 
 % H gates
@@ -202,8 +202,8 @@ La Figura~\ref{fig:shor_circuit} muestra la estructura del circuito cuántico pa
 \node[meas] (m1) at (9.2, 0) {Medir $s$};
 \node[meas] (m2) at (9.2, -1.2) {Medir $t$};
 
-% Post-processing
-\node[draw, dashed, rounded corners, fill=yellow!10, minimum width=1.8cm, minimum height=1.2cm, font=\small, align=center] (post) at (10.8, -0.6) {$k = -st^{-1}$\\$\bmod n$};
+% Post-processing (placed clearly to the right of all measurements)
+\node[draw, dashed, rounded corners, fill=yellow!10, minimum width=1.8cm, minimum height=1.2cm, font=\small, align=center] (post) at (11.8, -0.6) {$k = -st^{-1}$\\$\bmod n$};
 
 % Arrows from measurements to post-processing
 \draw[->, thick, dashed] (m1.east) -- (post.north west);
